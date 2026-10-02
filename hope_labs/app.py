@@ -1,0 +1,404 @@
+"""The window: sign in, then hand over to the page.
+
+Tkinter, because it is in the standard library and a launcher that needs a toolkit installed
+before it can ask for a password is not a launcher. It is deliberately small — a cluster, an
+account, a button and a log — because the tools themselves live in the browser, where there is
+room for them. The sign-in is the HOPE-MD launcher's, Duo dialogue and all, since that part is
+the same wherever it is used.
+"""
+import json
+import os
+import queue
+import threading
+import webbrowser
+
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+from . import APP, TAGLINE, __version__, credit, ACK
+from . import clusters, hub as hubmod, tunnel
+
+CONFIG = os.path.join(os.path.expanduser("~"), ".hope_labs.json")
+
+BANNER = dict(deep="#0b2b33", deeper="#061a20", teal="#5fb3c4", warm="#c2603a",
+              paper="#f4f8f8", muted="#b7d6dc", faint="#8fb6bd")
+SCHEMA = 1
+
+
+def load():
+    try:
+        with open(CONFIG) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save(d):
+    try:
+        with open(CONFIG, "w") as fh:
+            json.dump(dict(d, schema=SCHEMA), fh, indent=1)
+    except OSError:
+        pass
+
+
+def centre_on(pw, ph, px, py, w, h, sw, sh):
+    """Where a w x h dialogue goes over a pw x ph parent at (px, py): clamped onto the screen."""
+    if pw > w and ph > h:
+        x, y = px + (pw - w) // 2, py + (ph - h) // 3
+    else:
+        x, y = (sw - w) // 2, (sh - h) // 3
+    return max(0, min(x, max(0, sw - w))), max(0, min(y, max(0, sh - h)))
+
+
+def place_over(win, parent, log=None):
+    """Put a dialogue over the window that raised it, then show it: never mapped unplaced."""
+    try:
+        if parent is not None:
+            parent.update_idletasks()
+        win.update_idletasks()
+        w = max(win.winfo_width(), win.winfo_reqwidth())
+        h = max(win.winfo_height(), win.winfo_reqheight())
+        pw = ph = px = py = 0
+        if parent is not None and parent.winfo_viewable():
+            pw, ph = parent.winfo_width(), parent.winfo_height()
+            px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        x, y = centre_on(pw, ph, px, py, w, h, win.winfo_screenwidth(), win.winfo_screenheight())
+        win.geometry("%dx%d+%d+%d" % (w, h, x, y))
+        win.deiconify()
+        win.lift()
+    except Exception as exc:                                    # noqa: BLE001
+        if log:
+            log("could not place the dialogue (%s); it will open where the window manager puts it" % exc)
+        try:
+            win.deiconify()
+        except Exception:                                       # noqa: BLE001
+            pass
+
+
+class Banner(tk.Canvas):
+    """The header: the mark, the name and the build, drawn rather than pasted."""
+
+    H = 96
+
+    def __init__(self, parent, name, tagline, build):
+        super().__init__(parent, height=self.H, highlightthickness=0, bd=0, bg=BANNER["deep"])
+        self.lines = (name, tagline, build)
+        import tkinter.font as tkfont
+        fam = tkfont.nametofont("TkDefaultFont").actual()["family"]
+        self.fonts = (tkfont.Font(family=fam, size=17, weight="bold"),
+                      tkfont.Font(family=fam, size=10),
+                      tkfont.Font(family=fam, size=9))
+        self.bind("<Configure>", self._draw)
+
+    @staticmethod
+    def _mix(a, b, t):
+        a = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+        b = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+        return "#%02x%02x%02x" % tuple(int(a[k] + (b[k] - a[k]) * t) for k in range(3))
+
+    def _draw(self, _e=None):
+        self.delete("all")
+        w, h = max(self.winfo_width(), 1), self.H
+        for x in range(0, w, 4):
+            self.create_rectangle(x, 0, x + 4, h, width=0,
+                                  fill=self._mix(BANNER["deep"], BANNER["deeper"], x / float(w)))
+        # the mark: four tiles as a launcher's grid, one of them the odd one out
+        cx, cy, tile, gap = 46, h / 2.0, 20, 6
+        for row in (0, 1):
+            for col in (0, 1):
+                x = cx - tile - gap / 2.0 + col * (tile + gap)
+                y = cy - tile - gap / 2.0 + row * (tile + gap)
+                self.create_rectangle(x, y, x + tile, y + tile, width=0,
+                                      fill=BANNER["warm"] if (row, col) == (1, 1) else BANNER["teal"])
+        colours = (BANNER["paper"], BANNER["muted"], BANNER["faint"])
+        y = (h - sum(f.metrics("linespace") for f in self.fonts) - 6) / 2.0
+        for text, font, col in zip(self.lines, self.fonts, colours):
+            self.create_text(96, y, text=text, font=font, fill=col, anchor="nw")
+            y += font.metrics("linespace") + 3
+
+
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.q = queue.Queue()
+        self.lines = []
+        self.t = None
+        self.hub = None
+        self.httpd = None
+        self.url = ""
+        cfg = load()
+
+        root.title(APP)
+        root.minsize(660, 520)
+        pad = dict(padx=10, pady=5)
+
+        build = os.environ.get("HOPELABS_BUILD") or __version__
+        Banner(root, APP, TAGLINE, "build %s" % build).pack(fill="x", pady=(0, 6))
+
+        form = ttk.LabelFrame(root, text="Sign in once, for every tool")
+        form.pack(fill="x", **pad)
+
+        self.site = tk.StringVar(value=cfg.get("site", clusters.sites()[0]))
+        ttk.Label(form, text="Cluster").grid(row=0, column=0, sticky="e", padx=6, pady=4)
+        box = ttk.Combobox(form, textvariable=self.site, values=clusters.sites(), state="readonly")
+        box.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+        box.bind("<<ComboboxSelected>>", lambda *_a: self._apply_site())
+
+        self.host = self._row(form, 1, "Address", cfg.get("host", ""))
+        self.user_label = ttk.Label(form, text="NetID")
+        self.user_label.grid(row=2, column=0, sticky="e", padx=6, pady=4)
+        self.user = tk.StringVar(value=cfg.get("user", ""))
+        ttk.Entry(form, textvariable=self.user).grid(row=2, column=1, sticky="ew", padx=6, pady=4)
+        self.jump = self._row(form, 3, "Gateway (ACES)", cfg.get("jump", ""))
+        self.key = self._row(form, 4, "Key with certificate (ACES)", cfg.get("key", ""))
+        self.note = ttk.Label(form, text="", foreground="#5f7070", wraplength=560, justify="left")
+        self.note.grid(row=5, column=1, sticky="w", padx=6, pady=(0, 6))
+        self._touched = set()
+        for name in ("host", "jump", "key"):
+            getattr(self, name).trace_add("write", self._mark(name))
+        self._apply_site(first=True, cfg=cfg)
+        form.columnconfigure(1, weight=1)
+
+        bar = ttk.Frame(root)
+        bar.pack(fill="x", **pad)
+        self.go = ttk.Button(bar, text="Sign in and open HOPE Labs", command=self.start)
+        self.go.pack(side="left")
+        self.open_btn = ttk.Button(bar, text="Open the page", command=self.open_browser, state="disabled")
+        self.open_btn.pack(side="left", padx=6)
+        self.stop_btn = ttk.Button(bar, text="Sign out", command=self.close, state="disabled")
+        self.stop_btn.pack(side="left")
+        self.status = ttk.Label(bar, text="not connected", foreground="#5f7070")
+        self.status.pack(side="right")
+
+        logbox = ttk.LabelFrame(root, text="What is happening")
+        logbox.pack(fill="both", expand=True, **pad)
+        self.log = tk.Text(logbox, height=13, wrap="word", font=("TkFixedFont", 10))
+        self.log.pack(fill="both", expand=True, side="left")
+        sb = ttk.Scrollbar(logbox, command=self.log.yview)
+        sb.pack(fill="y", side="right")
+        self.log.configure(yscrollcommand=sb.set, state="disabled")
+
+        self.verbose = tk.BooleanVar(value=False)
+        ttk.Checkbutton(root, text="Show technical details", variable=self.verbose,
+                        command=self._replay).pack(anchor="w", padx=12)
+        ttk.Label(root, text=credit(), foreground="#5f7070", wraplength=660,
+                  justify="left").pack(anchor="w", padx=10, pady=(4, 8))
+
+        root.protocol("WM_DELETE_WINDOW", self.quit)
+        self.pump()
+
+    # ---- the form -------------------------------------------------------
+    def _mark(self, name):
+        def cb(*_a):
+            if not getattr(self, "_filling", False):
+                self._touched.add(name)
+        return cb
+
+    def _set(self, name, value):
+        if name in self._touched:
+            return
+        self._filling = True
+        try:
+            getattr(self, name).set(value)
+        finally:
+            self._filling = False
+
+    def _apply_site(self, first=False, cfg=None):
+        d = clusters.defaults_for(self.site.get(), self.user.get().strip())
+        cfg = cfg or {}
+        if first and cfg.get("schema") == SCHEMA:
+            for name in ("host", "jump", "key"):
+                if cfg.get(name):
+                    self._touched.add(name)
+        self._set("host", d["host"])
+        self._set("jump", d["jump"])
+        self._set("key", d["key"])
+        self.user_label.configure(text=d["label"])
+        self.note.configure(text=("%s  %s" % (d["note"], d["hint"])).strip())
+
+    def _row(self, parent, r, label, value):
+        ttk.Label(parent, text=label).grid(row=r, column=0, sticky="e", padx=6, pady=4)
+        var = tk.StringVar(value=value)
+        ttk.Entry(parent, textvariable=var).grid(row=r, column=1, sticky="ew", padx=6, pady=4)
+        return var
+
+    # ---- the log --------------------------------------------------------
+    def say(self, text):
+        self.q.put(("log", str(text)))
+
+    def detail(self, text):
+        for ln in str(text).splitlines():
+            if ln.strip():
+                self.q.put(("detail", ln.rstrip()))
+
+    def _replay(self):
+        self.log.configure(state="normal")
+        self.log.delete("1.0", "end")
+        for kind, line in self.lines:
+            if kind == "detail" and not self.verbose.get():
+                continue
+            self.log.insert("end", ("    " + line if kind == "detail" else line) + "\n")
+        self.log.see("end")
+        self.log.configure(state="disabled")
+
+    def pump(self):
+        try:
+            while True:
+                kind, payload = self.q.get_nowait()
+                if kind in ("log", "detail"):
+                    self.lines.append((kind, payload.rstrip()))
+                    if kind == "detail" and not self.verbose.get():
+                        continue
+                    self.log.configure(state="normal")
+                    self.log.insert("end", ("    " if kind == "detail" else "") + payload.rstrip() + "\n")
+                    self.log.see("end")
+                    self.log.configure(state="disabled")
+                elif kind == "status":
+                    self.status.configure(text=payload)
+                elif kind == "ready":
+                    self.open_btn.configure(state="normal")
+                    self.stop_btn.configure(state="normal")
+                    self.go.configure(state="normal")
+                    self.open_browser()
+                elif kind == "details":
+                    self.verbose.set(True)
+                    self._replay()
+                elif kind == "failed":
+                    self.go.configure(state="normal")
+                    messagebox.showerror(APP, payload)
+        except queue.Empty:
+            pass
+        self.root.after(120, self.pump)
+
+    # ---- the Duo dialogue, on the main thread ---------------------------
+    def ask(self, title, instructions, prompts):
+        done = threading.Event()
+        answers = []
+
+        def build():
+            win = tk.Toplevel(self.root)
+            win.withdraw()
+            win.title(title or "%s - sign in" % APP)
+            win.transient(self.root)
+            if instructions and instructions.strip():
+                ttk.Label(win, text=instructions.strip(), wraplength=460,
+                          justify="left").pack(anchor="w", padx=12, pady=(12, 4))
+            entries = []
+            for text, echo in prompts:
+                ttk.Label(win, text=text.strip() or "Response", wraplength=460,
+                          justify="left").pack(anchor="w", padx=12, pady=(8, 2))
+                e = ttk.Entry(win, width=44, show="" if echo else "•")
+                e.pack(fill="x", padx=12)
+                entries.append(e)
+            if entries:
+                entries[0].focus_set()
+            row = ttk.Frame(win)
+            row.pack(fill="x", padx=12, pady=12)
+
+            def ok(*_):
+                answers.extend(e.get() for e in entries)
+                win.destroy()
+                done.set()
+
+            def cancel():
+                win.destroy()
+                done.set()
+
+            ttk.Button(row, text="Continue", command=ok).pack(side="right")
+            ttk.Button(row, text="Cancel", command=cancel).pack(side="right", padx=6)
+            win.bind("<Return>", ok)
+            win.bind("<Escape>", lambda *_a: cancel())
+            win.protocol("WM_DELETE_WINDOW", cancel)
+            win.resizable(False, False)
+            place_over(win, self.root, log=self.say)
+            win.grab_set()
+            win.attributes("-topmost", True)
+            win.after(300, lambda: win.attributes("-topmost", False))
+            if entries:
+                entries[0].focus_force()
+
+        self.root.after(0, build)
+        done.wait()
+        return answers or [""] * len(prompts)
+
+    # ---- the work -------------------------------------------------------
+    def start(self):
+        host, user = self.host.get().strip(), self.user.get().strip()
+        if not host or not user:
+            messagebox.showwarning(APP, "The cluster and your account are both needed.")
+            return
+        save({"site": self.site.get(), "host": host, "user": user,
+              "jump": self.jump.get(), "key": self.key.get()})
+        self.go.configure(state="disabled")
+        self.q.put(("status", "connecting"))
+        threading.Thread(target=self.work, args=(host, user), daemon=True).start()
+
+    def work(self, host, user):
+        try:
+            jump = clusters.parse_jump(self.jump.get())
+            key = self.key.get().strip() or None
+            if jump:
+                self.say("Connecting to %s as %s through the gateway %s:%d..." % (host, user, jump[0], jump[1]))
+            else:
+                self.say("Connecting to %s as %s..." % (host, user))
+                self.say("Approve the Duo prompt when it reaches your phone. It is asked once, "
+                         "however many tools you open.")
+            self.t = tunnel.connect(host, user, self.ask, jump=jump, key=key, log=self.detail)
+            node = tunnel.hostname(self.t)
+            self.say("Signed in on %s." % node)
+            self.hub = hubmod.Hub(self.t, user=user, host=node, say=self.say)
+            self.httpd, self.url = hubmod.serve(self.hub, port=0)
+            self.say("HOPE Labs is open. The tools start when you pick one.")
+            self.say("  If the page does not open, paste this in: %s" % self.url)
+            self.say("")
+            self.say(ACK)
+            self.q.put(("status", "signed in"))
+            self.q.put(("ready", ""))
+        except Exception as exc:                                # noqa: BLE001
+            self.say("")
+            self.say("Could not connect: %s" % exc)
+            self.say("The technical detail is below - send it with a report.")
+            self.q.put(("details", ""))
+            self.q.put(("status", "not connected"))
+            self.q.put(("failed", str(exc)))
+
+    def open_browser(self):
+        if self.url:
+            webbrowser.open(self.url)
+
+    def close(self):
+        if self.hub:
+            self.hub.stop_all()
+            self.hub = None
+        if self.httpd:
+            try:
+                self.httpd.shutdown()
+                self.httpd.server_close()
+            except Exception:                                   # noqa: BLE001
+                pass
+            self.httpd = None
+        if self.t:
+            try:
+                self.t.close()
+            except Exception:                                   # noqa: BLE001
+                pass
+            self.t = None
+        self.url = ""
+        self.open_btn.configure(state="disabled")
+        self.stop_btn.configure(state="disabled")
+        self.q.put(("status", "not connected"))
+        self.say("Signed out. The tools' pages are closed; anything already queued carries on.")
+
+    def quit(self):
+        self.close()
+        self.root.destroy()
+
+
+def main():
+    root = tk.Tk()
+    try:
+        ttk.Style().theme_use("clam")
+    except Exception:                                           # noqa: BLE001
+        pass
+    App(root)
+    root.mainloop()

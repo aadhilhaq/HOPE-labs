@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HOPE Labs</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 62"><rect x="8" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="8" y="33" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="33" width="21" height="21" rx="5" fill="%23c2603a"/></svg>'>
+</head>
+<body>
+
+<nav class="rail">
+  <span class="brand">
+    <svg width="26" height="26" viewBox="0 0 62 62" aria-hidden="true">
+      <rect x="8" y="8" width="21" height="21" rx="5" fill="#5fb3c4"/>
+      <rect x="33" y="8" width="21" height="21" rx="5" fill="#5fb3c4"/>
+      <rect x="8" y="33" width="21" height="21" rx="5" fill="#5fb3c4"/>
+      <rect x="33" y="33" width="21" height="21" rx="5" fill="#e08a63"/>
+    </svg>
+    <span>
+      <span class="nm">HOPE Labs</span><br>
+      <span class="sub" id="who">connecting…</span>
+    </span>
+  </span>
+
+  <button class="ritem on" data-view="tools"><span class="nm">Tools</span></button>
+  <button class="ritem" data-view="runs"><span class="nm">Results</span></button>
+
+  <div class="rlabel">The tools</div>
+  <div id="railtools"></div>
+
+  <div class="rfoot">
+    Each tool runs on <b>Grace</b> under your own account, and the jobs it submits are charged to you.
+    Closing the launcher stops the pages; anything already queued carries on.
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- ============================ the catalogue ============================ -->
+  <section id="view-tools" style="display:flex;flex-direction:column;min-height:0;flex:1">
+    <header class="top">
+      <h1>Tools</h1>
+      <span class="why" id="toolcount"></span>
+      <span class="spacer"></span>
+      <span class="chips" id="cats"></span>
+      <span class="search">
+        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M11 11 L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" placeholder="Search the tools" autocomplete="off">
+      </span>
+    </header>
+    <div class="body"><div class="grid" id="grid"></div></div>
+  </section>
+
+  <!-- ============================ one tool, shown ============================ -->
+  <section id="view-tool" hidden style="display:none;flex-direction:column;min-height:0;flex:1">
+    <header class="toolbar">
+      <b id="t-name"></b>
+      <span class="why" id="t-tag"></span>
+      <span class="spacer"></span>
+      <span class="jump">
+        <span class="lb">go to</span>
+        <span id="t-jump"></span>
+      </span>
+      <a class="btn sm" id="t-tab" target="_blank" rel="noopener">Open in a tab</a>
+      <button class="btn sm" id="t-stop">Stop</button>
+    </header>
+    <iframe class="frame" id="t-frame" title="the tool"></iframe>
+  </section>
+
+  <!-- ============================ results ============================ -->
+  <section id="view-runs" hidden style="display:none;flex-direction:column;min-height:0;flex:1">
+    <header class="top">
+      <h1>Results</h1>
+      <span class="why">every run folder the lab's tools have written, newest first</span>
+      <span class="spacer"></span>
+      <span class="chips" id="runfilter"></span>
+      <button class="btn sm" id="runrefresh">Refresh</button>
+    </header>
+    <div class="body" id="runbody"><p class="empty">Reading the run folders…</p></div>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
