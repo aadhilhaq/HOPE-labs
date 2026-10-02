@@ -1,4 +1,4 @@
-"""Draw the launcher's icon: the HOPE Labs mark, a ring crossed by two strokes.
+"""Draw the launcher's icon: the HOPE Labs mark, four tiles with the last one rust.
 
 Run at build time, so no image file has to be kept in the repository:
 
@@ -15,6 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TEAL = (13, 92, 107, 255)
 RUST = (194, 96, 58, 255)
 PAPER = (244, 248, 248, 255)
+CLEAR = (0, 0, 0, 0)
 SIZES = (16, 32, 48, 64, 128, 256)
 
 
@@ -42,7 +43,10 @@ def draw_mark(size=256, background=PAPER):
 
 
 def main():
-    icons = [draw_mark(s) for s in SIZES]
+    # The .exe's icon on a clear ground, as the window draws its own (app.py, mark_image): on paper
+    # the taskbar and Explorer showed a pale square around the tiles. The PNG keeps its paper ground,
+    # for pages that show it on white.
+    icons = [draw_mark(s, background=CLEAR) for s in SIZES]
     ico = os.path.join(HERE, "hopelabs.ico")
     icons[-1].save(ico, sizes=[(s, s) for s in SIZES])
     png = os.path.join(HERE, "hopelabs.png")
