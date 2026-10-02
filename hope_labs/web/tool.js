@@ -33,7 +33,7 @@ function flash(text, bad) {
 function openTool(key) {
   const win = window.open("/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN),
                           "hopelabs-" + key, "width=1480,height=940");
-  if (!win) flash("Chrome blocked the window. Click the blocked-pop-up icon at the right of the address bar and allow pop-ups for this address.", true);
+  if (!win) flash("Chrome blocked the window. Click Pop-up blocked at the right of the address bar, choose Always allow, then pick the tool again.", true);
   else win.focus();
 }
 

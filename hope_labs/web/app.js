@@ -89,10 +89,16 @@ function card(tool) {
   box.appendChild(el("div", "blurb", tool.blurb));
 
   if (tool.takes || tool.gives) {
+    // each label stays with its value: "leaves" at the end of one line and what it leaves on the
+    // next reads as two separate things
     const chain = el("div", "chain");
-    if (tool.takes) { chain.appendChild(document.createTextNode("takes ")); chain.appendChild(el("b", null, tool.takes)); }
-    if (tool.takes && tool.gives) chain.appendChild(document.createTextNode(" · "));
-    if (tool.gives) { chain.appendChild(document.createTextNode("leaves ")); chain.appendChild(el("b", null, tool.gives)); }
+    [["takes", tool.takes], ["leaves", tool.gives]].forEach(([word, what]) => {
+      if (!what) return;
+      const pair = el("span", "pair");
+      pair.appendChild(document.createTextNode(word + " "));
+      pair.appendChild(el("b", null, what));
+      chain.appendChild(pair);
+    });
     box.appendChild(chain);
   }
 
@@ -158,7 +164,7 @@ function openWindow(key, from) {
   const url = "/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN)
             + (from ? "&from=" + encodeURIComponent(from) : "");
   const win = window.open(url, "hopelabs-" + key, "width=1480,height=940");
-  if (!win) flash("Your browser blocked the window. Allow pop-ups for this page, or use the tool's link.", true);
+  if (!win) flash("Chrome blocked the window. Click Pop-up blocked at the right of the address bar, choose Always allow, then pick the tool again.", true);
   else win.focus();
 }
 
