@@ -26,6 +26,37 @@ MONITOR_READY = "Ctrl-C here stops the server"
 MONITOR_TOKEN = re.compile(r"\?t=([A-Za-z0-9_-]{8,})")
 
 
+#: Where the lab's own copies are. Every default install below sits under it, so one setting
+#: moves all five: a person outside the group installs them in their own scratch and names that
+#: folder instead. See docs/install-on-grace.md.
+LAB_ROOT = "/scratch/group/sflab"
+
+
+def rebase(install, root):
+    """`install` as it would be under `root`, keeping the layout the lab uses.
+
+    Only the lab root is replaced, so a path already pointing somewhere else is left alone and
+    a tool named individually keeps whatever it was given.
+    """
+    root = (root or "").strip().rstrip("/")
+    if not root or not install.startswith(LAB_ROOT + "/"):
+        return install
+    return root + install[len(LAB_ROOT):]
+
+
+def installs_for(root="", overrides=None):
+    """{tool key: where it is}, from one root and any tool named on its own."""
+    out = {}
+    for tool in TOOLS:
+        where = rebase(tool.install, root)
+        if where != tool.install:
+            out[tool.key] = where
+    for key, where in (overrides or {}).items():
+        if key in BY_KEY and str(where or "").strip():
+            out[key] = str(where).strip()
+    return out
+
+
 def remote_path(path):
     """A path for the far end's shell, with ~ still able to expand."""
     path = (path or "").strip()
@@ -125,17 +156,21 @@ def _aptamer(where, runs, port):
 
 
 def _monitor(where, runs, port):
-    # The monitor is told its port. Its environment is a venv in the group space rather than an
-    # activate.sh beside the checkout, which is how that pipeline was installed.
+    # The monitor is told its port. Its environment is a venv beside the checkout rather than an
+    # activate.sh inside it, which is how that pipeline was installed, so both the environment
+    # and the root it lists runs under are taken from the folder the checkout sits in. For the
+    # lab's own copy that is /scratch/group/sflab, as before; for a copy in somebody's scratch it
+    # follows them there without a second setting.
     #
     # --token on its own makes the monitor generate one and print it. It is off by default there,
     # and left off anyone else logged into the same login node could reach it over loopback, so
     # the hub always asks for it and reads it back out of the banner.
-    args = "-m hope_monitor --host 127.0.0.1 --port %d --token --root /scratch/group/sflab" % port
+    args = '-m hope_monitor --host 127.0.0.1 --port %d --token --root "$HL_ROOT"' % port
     if runs:
         args += " --runs " + remote_path(runs)
-    return ('source /scratch/group/sflab/envs/hope/bin/activate 2>/dev/null || true; '
-            'cd %s || exit 1; PYTHONPATH=%s exec python %s' % (where, where, args))
+    return ('HL_ROOT="$(cd %s/.. && pwd)"; '
+            'source "$HL_ROOT"/envs/hope/bin/activate 2>/dev/null || true; '
+            'cd %s || exit 1; PYTHONPATH=%s exec python %s' % (where, where, where, args))
 
 
 TOOLS = (

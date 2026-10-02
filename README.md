@@ -17,6 +17,10 @@ launcher starts the one you pick over the connection it is holding, forwards a p
 opens it in a window of its own. Nothing is installed on the cluster for this, and nothing about
 the tools is installed on your computer.
 
+It opens the lab's own copies under `/scratch/group/sflab`. To use your own, install the tools in
+your scratch on Grace and name that folder once:
+[docs/install-on-grace.md](docs/install-on-grace.md).
+
 ## Using it
 
 **Windows** — download `HOPE-Labs-windows.zip` from the [releases page](../../releases/latest),

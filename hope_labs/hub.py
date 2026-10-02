@@ -77,11 +77,14 @@ class Running:
 class Hub:
     """Everything the page talks to: the connection, the tools that are up, the runs."""
 
-    def __init__(self, transport, user="", host="", say=None):
+    def __init__(self, transport, user="", host="", say=None, installs=None):
         self.t = transport
         self.user = user
         self.host = host
         self.say = say or (lambda *a: None)
+        #: {tool key: where it is on the cluster}, for anyone whose copies are not the lab's.
+        #: Empty means every tool is where tools.py says, which is what a lab member wants.
+        self.installs = dict(installs or {})
         self.running = {}                 # key -> Running
         self.token = secrets.token_urlsafe(12)
         self.lock = threading.Lock()
@@ -117,7 +120,7 @@ class Hub:
                 self.running.pop(key, None)
 
         asked = self.free_remote_port() if tool.needs_port else 0
-        line = tool.command(runs=runs, port=asked)
+        line = tool.command(install=self.install_of(tool), runs=runs, port=asked)
         self.say("%s: starting on the login node" % tool.name)
         channel = self.t.open_session()
         channel.get_pty()                 # so the tool dies with this connection
@@ -150,16 +153,21 @@ class Hub:
                            "%s did not report a URL within %ds. What it said:\n%s"
                            % (tool.name, START_TIMEOUT, tail(buf)))
 
+    def install_of(self, tool):
+        """Where this copy of a tool is: what the settings say, else the lab's own."""
+        return self.installs.get(tool.key) or tool.install
+
     def why(self, tool, buf):
         """What went wrong, in terms that can be acted on."""
         low = buf.lower()
+        where = self.install_of(tool)
         if "no-activate" in low:
             return ("%s is installed at %s but its activate.sh is missing, so its environment "
-                    "cannot be entered." % (tool.name, tool.install))
+                    "cannot be entered." % (tool.name, where))
         if "no such file or directory" in low and "cd" in low:
-            return "there is no %s on the cluster: %s" % (tool.name, tool.install)
+            return "there is no %s on the cluster: %s" % (tool.name, where)
         if "no module named" in low:
-            return ("%s was not found in its install at %s.\n%s" % (tool.name, tool.install, tail(buf)))
+            return ("%s was not found in its install at %s.\n%s" % (tool.name, where, tail(buf)))
         if "future feature annotations" in low or "syntaxerror" in low:
             return ("the cluster ran %s with a Python too old to parse it; its environment did not "
                     "load.\n%s" % (tool.name, tail(buf)))
@@ -191,6 +199,7 @@ class Hub:
             self.running.pop(key, None)
             up = None
         info = tool.as_json()
+        info["install"] = self.install_of(tool)      # the copy in use, not always the lab's
         info["running"] = up is not None
         info["url"] = up.url if up else ""
         info["since"] = int(time.time() - up.started) if up else 0
