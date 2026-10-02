@@ -277,6 +277,10 @@ def handler_for(hub):
             query = parse_qs(url.query)
             if url.path in ("/", "/index.html"):
                 return self._static("index.html")
+            # Each tool opens in a window of its own, and that window is served from here: the
+            # tool's own page below, a bar across the top that reaches every other tool.
+            if url.path == "/tool":
+                return self._static("tool.html")
             if url.path.startswith("/static/"):
                 return self._static(url.path[len("/static/"):])
             if not self._allowed(query):

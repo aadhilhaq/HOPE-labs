@@ -58,7 +58,7 @@ function paintRail() {
   const box = $("railtools");
   box.innerHTML = "";
   STATE.tools.forEach((tool) => {
-    const row = el("button", "ritem" + (VIEW === tool.key ? " on" : ""));
+    const row = el("button", "ritem");
     row.appendChild(el("span", "dot" + (tool.running ? " up" : "")));
     row.appendChild(el("span", "nm", tool.name));
     row.title = tool.running ? tool.name + " is running" : "start " + tool.name;
@@ -144,15 +144,21 @@ function paintTools() {
 /* ------------------------------------------------------------------ views */
 function show(view) {
   VIEW = view;
-  const known = ["tools", "runs"];
   $("view-tools").hidden = view !== "tools";
   $("view-runs").hidden = view !== "runs";
-  $("view-tool").hidden = known.includes(view);
-  ["view-tools", "view-runs", "view-tool"].forEach((id) => {
-    $(id).style.display = $(id).hidden ? "none" : "flex";
-  });
+  ["view-tools", "view-runs"].forEach((id) => { $(id).style.display = $(id).hidden ? "none" : "flex"; });
   if (view === "runs") loadRuns();
   paintRail();
+}
+
+/* Each tool opens in a window of its own, served by the launcher: the tool's own page with a bar
+   across the top that reaches the others. The window is named after the tool, so picking the same
+   one again raises the window already open instead of starting a second copy. */
+function openWindow(key) {
+  const win = window.open("/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN),
+                          "hopelabs-" + key, "width=1480,height=940");
+  if (!win) flash("Your browser blocked the window. Allow pop-ups for this page, or use the tool's link.", true);
+  else win.focus();
 }
 
 async function open_tool(key, button) {
@@ -174,8 +180,9 @@ async function open_tool(key, button) {
     }
     if (button) { button.disabled = false; button.textContent = was; }
   }
-  paintToolView(tool);
-  show(key);
+  openWindow(key);
+  paintTools();
+  paintRail();
 }
 
 async function stop_tool(key) {
@@ -183,29 +190,10 @@ async function stop_tool(key) {
     const got = await api("/api/stop", { tool: key });
     Object.assign(byKey(key) || {}, got);
     flash((got.name || "the tool") + " stopped.");
-    if (VIEW === key) show("tools");
     paintTools(); paintRail();
   } catch (failure) { flash(failure.message, true); }
 }
 
-function paintToolView(tool) {
-  $("t-name").textContent = tool.name;
-  $("t-tag").textContent = tool.tagline;
-  $("t-tab").href = tool.url;
-  $("t-stop").onclick = () => stop_tool(tool.key);
-  // The interlinking: every other tool is one button away, wherever you are.
-  const jump = $("t-jump");
-  jump.innerHTML = "";
-  STATE.tools.filter((t) => t.key !== tool.key).forEach((other) => {
-    const step = tool.next_steps.find((s) => s.to === other.key);
-    const b = el("button", "btn sm" + (step ? " next" : ""), other.name);
-    b.title = step ? step.label : "open " + other.name;
-    b.onclick = () => open_tool(other.key, b);
-    jump.appendChild(b);
-  });
-  const frame = $("t-frame");
-  if (frame.dataset.url !== tool.url) { frame.src = tool.url; frame.dataset.url = tool.url; }
-}
 
 /* ------------------------------------------------------------------ results */
 function when(seconds) {
@@ -290,10 +278,6 @@ async function refresh() {
   $("who").textContent = (got.user || "") + " · " + (got.host || "grace");
   paintTools();
   paintRail();
-  if (!["tools", "runs"].includes(VIEW)) {
-    const tool = byKey(VIEW);
-    if (tool && tool.running) paintToolView(tool); else show("tools");
-  }
 }
 
 $("q").addEventListener("input", (e) => { QUERY = e.target.value; paintTools(); });

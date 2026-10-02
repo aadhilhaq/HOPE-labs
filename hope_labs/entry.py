@@ -39,7 +39,7 @@ def main(argv=None):
         except ImportError as exc:
             notes.append("no tkinter here (%s)" % exc)
         import os
-        for name in ("index.html", "app.js", "style.css"):
+        for name in ("index.html", "app.js", "style.css", "tool.html", "tool.js"):
             path = os.path.join(hub.WEB, name)
             assert os.path.isfile(path), "the page is missing from the bundle: " + name
         notes.append("page ok")

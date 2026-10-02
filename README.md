@@ -14,8 +14,8 @@ already was, reached through one connection and one Duo approval.
 
 The tools are not changed in any way. Each already serves its own page on a login node; the
 launcher starts the one you pick over the connection it is holding, forwards a port to it and
-shows it inside the shell. Nothing is installed on the cluster for this, and nothing about the
-tools is installed on your computer.
+opens it in a window of its own. Nothing is installed on the cluster for this, and nothing about
+the tools is installed on your computer.
 
 ## Using it
 
@@ -32,13 +32,16 @@ itself.
 
 ## What the page does
 
-**Tools** is the catalogue: every tool as a card, with what it does, what it takes from another
-tool and what it leaves for the next one. **Launch** starts it on the login node; the card then
-says *running* and **Open** shows it.
+**Tools** is the landing page: every tool a block, with what it does, what it takes from another
+tool and what it leaves for the next one, over a search box and the categories. **Launch** starts
+it on the login node and opens it in a window of its own; the block then says *running*, and
+picking it again raises the window that is already open rather than starting a second copy.
 
-**Every tool is one button from every other.** Along the top of any tool there is a row of the
-others, so a pose that came out of docking is a click away from being simulated, and the buttons
-that follow the lab's own order of work are marked.
+**Every tool is one button from every other.** Across the top of each tool's window is a row of
+the others, so a pose that came out of docking is a click away from being simulated — the button
+opens that tool in its own window too, starting it first if it is not up. The steps that follow
+the lab's own order of work are marked with an arrow. **Plain page** in that bar opens the tool
+without the launcher's bar, for anyone who would rather have the tool alone.
 
 **Results** lists the run folders of all five tools together, newest first, filtered by tool. Each
 run carries the step that usually follows it — *Simulate these poses in HOPE-MD* beside a docking

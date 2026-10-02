@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HOPE Labs</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 62"><rect x="8" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="8" y="33" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="33" width="21" height="21" rx="5" fill="%23c2603a"/></svg>'>
+<style>
+  /* this window is one tool and the bar above it, nothing else */
+  body{display:flex;flex-direction:column;overflow:hidden}
+</style>
+</head>
+<body>
+
+<header class="toolbar">
+  <svg width="17" height="17" viewBox="0 0 62 62" aria-hidden="true" style="flex:0 0 auto">
+    <rect x="8" y="8" width="21" height="21" rx="5" fill="var(--teal)"/>
+    <rect x="33" y="8" width="21" height="21" rx="5" fill="var(--teal)"/>
+    <rect x="8" y="33" width="21" height="21" rx="5" fill="var(--teal)"/>
+    <rect x="33" y="33" width="21" height="21" rx="5" fill="var(--rust)"/>
+  </svg>
+  <b id="t-name">…</b>
+  <span class="why" id="t-tag"></span>
+  <span class="spacer"></span>
+  <span class="jump">
+    <span class="lb">open next</span>
+    <span id="t-jump"></span>
+  </span>
+  <a class="btn sm" id="t-plain" target="_blank" rel="noopener" title="the tool's own page, without this bar">Plain page</a>
+  <button class="btn sm" id="t-home" title="the HOPE Labs catalogue">All tools</button>
+  <button class="btn sm" id="t-stop">Stop</button>
+</header>
+
+<iframe class="frame" id="t-frame" title="the tool"></iframe>
+
+<script src="/static/tool.js"></script>
+</body>
+</html>
