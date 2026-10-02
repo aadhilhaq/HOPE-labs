@@ -157,23 +157,31 @@ function show(view) {
   paintRail();
 }
 
-/* Each tool opens in a tab of its own, served by the launcher: the tool's own page with a bar
-   across the top that reaches the others. The tab is named after the tool, so picking the same one
-   again goes to the tab already open instead of starting a second copy. A plain tab, with the
-   address bar and the other tabs beside it; a window opened with a size of its own loses those. */
+/* Each tool opens in a tab of its own, on the tool's own page, as its own launcher opens it. The tab
+   is named after the tool, so picking a tool that is open already goes back to its tab instead of
+   loading the page again over whatever is filled in there. The tab comes to the launcher first,
+   which starts the tool and shows the wait, then goes on to the tool's page. */
 function openWindow(key, from) {
+  const tool = byKey(key);
   const url = "/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN)
             + (from ? "&from=" + encodeURIComponent(from) : "");
-  const win = window.open(url, "hopelabs-" + key);
-  if (!win) flash("Chrome blocked the tab. Click the blocked pop-up mark at the right of the address bar, choose Always allow, then pick the tool again.", true);
-  else win.focus();
+  // A name and no address finds the tab already open under it, or opens an empty one; a plain
+  // tab either way, with the address bar and the other tabs beside it.
+  const win = window.open("", "hopelabs-" + key);
+  if (!win) { flash("Chrome blocked the tab. Click the blocked pop-up mark at the right of the address bar, choose Always allow, then pick the tool again.", true); return; }
+  let empty = false, ours = false;
+  try { empty = win.location.href === "about:blank"; ours = true; } catch (e) { /* the tool's own page, another address */ }
+  // Load it when the tab is new, when a run is handed over, or when the tool has stopped since the
+  // tab last showed it; a tab still starting the tool, or showing it, is only brought forward.
+  if (empty || from || !(ours || (tool && tool.running))) win.location.href = url;
+  win.focus();
 }
 
 /* Open the tool's tab inside the click, before anything is awaited. Chrome lets a page open a tab
    only while the click that asked for it is fresh (about five seconds), and starting a tool on the
    cluster takes far longer than that. So the tab opens at once and starts the tool itself, showing
-   its progress where the person is looking. `from` is a run folder to hand over:
-   the tool's window shows it with a Copy button. */
+   its progress where the person is looking. `from` is a run folder to hand over: the tab shows it
+   with a Copy button before it goes on to the tool. */
 function open_tool(key, button, from) {
   const tool = byKey(key);
   if (!tool) return;
@@ -184,7 +192,7 @@ function open_tool(key, button, from) {
     button.textContent = "starting…";
     setTimeout(() => { button.disabled = false; button.textContent = was; }, 4000);
   }
-  // the window starts the tool; read the state back so this block says "running" when it is
+  // the tab starts the tool; read the state back so this block says "running" when it is
   setTimeout(() => { refresh().catch(() => {}); }, 3000);
   setTimeout(() => { refresh().catch(() => {}); }, 20000);
 }

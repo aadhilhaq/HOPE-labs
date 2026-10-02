@@ -7,8 +7,14 @@
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 62"><rect x="8" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="8" y="33" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="33" width="21" height="21" rx="5" fill="%23c2603a"/></svg>'>
 <style>
-  /* this window is one tool and the bar above it, nothing else */
-  body{display:flex;flex-direction:column;overflow:hidden}
+  /* the tab a tool opens in, while the tool starts; then the tab goes on to the tool's own page.
+     The bar along the bottom is shared with the docs; a message lifts clear of it. */
+  :root{--accent:var(--teal)}
+  /*__CREDITBAR_CSS__*/
+  body{display:block;min-height:100vh;padding-bottom:28px}
+  .flash{bottom:46px}
+  .wait .acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .wait pre{margin:8px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -23,44 +29,42 @@
   <b id="t-name">…</b>
   <span class="why" id="t-tag"></span>
   <span class="spacer"></span>
-  <span class="jump">
-    <span class="lb">open next</span>
-    <span id="t-jump"></span>
-  </span>
-  <a class="btn sm" id="t-plain" target="_blank" rel="noopener" title="the tool's own page, without this bar">Plain page</a>
-  <button class="btn sm" id="t-home" title="the HOPE Labs catalogue">All tools</button>
-  <button class="btn sm" id="t-stop">Stop</button>
   <a class="btn sm" id="t-docs" href="/docs/windows.html" target="_blank" rel="noopener"
-     title="HOPE Labs documentation: this bar, and how a run is handed from one tool to the next">HOPE Labs docs</a>
+     title="HOPE Labs documentation: how a tool opens, and how a run is handed from one tool to the next">HOPE Labs docs</a>
 </header>
 
 <div class="handoff" id="t-from" hidden>
   <span class="lb">from the run</span>
   <code id="t-from-path"></code>
   <button class="btn sm" id="t-from-copy">Copy path</button>
-  <span class="why">paste it into this tool's import box</span>
+  <span class="why">paste it into the tool's import box</span>
 </div>
 
-<div class="handoff" id="t-blocked" hidden>
-  <span class="lb">blocked</span>
-  <span>Chrome is refusing this tool's requests to this computer. When Chrome asks whether this address may reach
-  apps on your device, allow it; or allow "Apps on device" under Site settings for this address; then reload this tab.
-  <a id="t-blocked-plain" target="_blank" rel="noopener">The plain page</a> opens the tool on its own, which Chrome does not gate.</span>
-</div>
-
-<div class="wait" id="t-wait" hidden>
+<div class="wait" id="t-wait">
   <span class="spin"></span>
   <div>
-    <b>Starting <span id="t-wait-name"></span> on the login node</b><br>
-    <span class="why">The first start of the day takes up to a minute while its environment loads. This window fills in by itself.</span>
+    <b>Starting <span id="t-wait-name">the tool</span> on the login node</b><br>
+    <span class="why">The first start of the day takes up to a minute while its environment loads. This tab goes on to the tool by itself.</span>
   </div>
 </div>
 
-<!-- the tool is another address on this computer: Chrome lets a frame reach one only when the page that holds
-     the frame passes the permission down (loopback-network and local-network since Chrome 145, local-network-access
-     in 142 to 144; a browser ignores a name it does not know) -->
-<iframe class="frame" id="t-frame" title="the tool" allow="loopback-network *; local-network *; local-network-access *"></iframe>
+<div class="wait" id="t-ready" hidden>
+  <div>
+    <b><span id="t-ready-name"></span> is ready.</b><br>
+    <span class="why">Copy the run's folder now, then paste it into the tool's import box.</span>
+    <div class="acts"><button class="btn pri" id="t-go">Copy the path and open the tool</button></div>
+  </div>
+</div>
 
+<div class="wait" id="t-failed" hidden>
+  <div>
+    <b><span id="t-failed-name"></span> did not start.</b>
+    <pre id="t-failed-why"></pre>
+    <div class="acts"><button class="btn pri" id="t-retry">Try again</button></div>
+  </div>
+</div>
+
+<!--__CREDITBAR__-->
 <script src="/static/tool.js"></script>
 </body>
 </html>

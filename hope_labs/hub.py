@@ -58,7 +58,8 @@ class Running:
 
     @property
     def url(self):
-        return "http://127.0.0.1:%d/%s" % (self.local_port, ("?t=" + self.token) if self.token else "")
+        return "http://127.0.0.1:%d%s%s" % (self.local_port, self.tool.page,
+                                            ("?t=" + self.token) if self.token else "")
 
     def alive(self):
         return not (self.channel.exit_status_ready() and not self.channel.recv_ready())
@@ -88,6 +89,7 @@ class Hub:
         self.running = {}                 # key -> Running
         self.token = secrets.token_urlsafe(12)
         self.lock = threading.Lock()
+        self.starting = {}                # key -> the lock held while that tool starts
         self._runs_cache = (0.0, [])
 
     # ---- starting and stopping ------------------------------------------
@@ -111,6 +113,14 @@ class Hub:
         tool = catalogue.BY_KEY.get(key)
         if tool is None:
             raise ValueError("there is no tool called %r" % key)
+        # One start at a time per tool: a second tab asking while the first start is still under
+        # way waits for it and gets the same copy, instead of a second one on the login node.
+        with self.lock:
+            gate = self.starting.setdefault(key, threading.Lock())
+        with gate:
+            return self._launch(tool, key, runs)
+
+    def _launch(self, tool, key, runs):
         with self.lock:
             up = self.running.get(key)
             if up is not None and up.alive():
@@ -253,10 +263,10 @@ class Hub:
         return found
 
 
-def index_page():
-    """The launcher's page, with the bar along its bottom filled in from the docs' credit line."""
+def index_page(name="index.html"):
+    """One of the launcher's pages, with the bar along its bottom filled in from the docs' credit line."""
     from . import docs, docskit
-    with open(os.path.join(WEB, "index.html"), encoding="utf-8") as fh:
+    with open(os.path.join(WEB, name), encoding="utf-8") as fh:
         page = fh.read()
     return (page.replace("/*__CREDITBAR_CSS__*/", docskit.CREDITBAR_CSS.strip())
                 .replace("<!--__CREDITBAR__-->", docs.creditbar()))
@@ -317,10 +327,10 @@ def handler_for(hub):
             # session, and a page of it kept as a bookmark has no token to carry.
             if url.path == "/docs" or url.path.startswith("/docs/"):
                 return self._docs(url.path)
-            # Each tool opens in a tab of its own, and that tab is served from here: the
-            # tool's own page below, a bar across the top that reaches every other tool.
+            # Each tool opens in a tab of its own. The tab comes here first, starts the tool and
+            # shows the wait, then goes on to the tool's own page.
             if url.path == "/tool":
-                return self._static("tool.html")
+                return self._send(200, "text/html; charset=utf-8", index_page("tool.html").encode("utf-8"))
             if url.path.startswith("/static/"):
                 return self._static(url.path[len("/static/"):])
             if not self._allowed(query):

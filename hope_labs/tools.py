@@ -92,7 +92,7 @@ class Tool:
     """One tool: what it is, where it is, and the line that starts it."""
 
     def __init__(self, key, name, tagline, category, install, start, ready, blurb="",
-                 needs_port=False, runs=(), next_steps=(), takes="", gives=""):
+                 needs_port=False, runs=(), next_steps=(), takes="", gives="", page="/"):
         self.key = key
         self.name = name
         self.tagline = tagline
@@ -106,6 +106,7 @@ class Tool:
         self.next_steps = tuple(next_steps)
         self.takes = takes                # what another tool can hand it
         self.gives = gives                # what it leaves for the next tool
+        self.page = page                  # the page its tab opens on, as its own launcher opens it
 
     def command(self, install="", runs="", port=0):
         return self._start(remote_path(install or self.install), runs, port)
@@ -114,7 +115,7 @@ class Tool:
         return {"key": self.key, "name": self.name, "tagline": self.tagline, "blurb": self.blurb,
                 "category": self.category, "install": self.install,
                 "next_steps": [{"to": to, "label": label} for to, label in self.next_steps],
-                "takes": self.takes, "gives": self.gives}
+                "takes": self.takes, "gives": self.gives, "page": self.page}
 
 
 # --- the lines that start each tool ----------------------------------------
@@ -212,16 +213,20 @@ TOOLS = (
          gives="designed binders",
          next_steps=(("hopemd", "Simulate a design in HOPE-MD"),)),
 
-    Tool("pipelines", "HOPE-pipelines", "Screen and cofold a library",
-         "Screening", "/scratch/group/sflab/HOPE-pipelines", _monitor, _monitor_ready,
-         blurb="The lab's screening pipelines and the monitor that follows them: cofolding, "
-               "interaction analysis and the results of a campaign.",
+    Tool("pipelines", "HOPE-pipelines", "Design a peptide",
+         "Design", "/scratch/group/sflab/HOPE-pipelines", _monitor, _monitor_ready,
+         blurb="The lab's four peptide-design pipelines, dimer and trimer loops and the trimer and "
+               "tetramer pipelines, set up from one workspace: the target, its hotspots, the "
+               "stages, then Submit.",
          needs_port=True,
          # $SCRATCH/hope/runs is where the monitor writes when it is not told otherwise, which
          # is how this launcher starts it, and where my_workspace.sh points the notebooks
          runs=("$SCRATCH/hope/runs", "/scratch/group/sflab/hope_runs"),
-         gives="screening hits",
-         next_steps=(("adcp", "Dock a hit in ADCP"), ("hopemd", "Simulate a hit in HOPE-MD"))),
+         gives="designed peptides",
+         # the workspace, where a run is set up: the pipelines' own launcher opens it first too,
+         # since someone who has just signed in is setting a run up; it lists the runs as well
+         page="/pick",
+         next_steps=(("adcp", "Dock a design in ADCP"), ("hopemd", "Simulate a design in HOPE-MD"))),
 
     Tool("hopemd", "HOPE-MD", "Simulate a complex",
          "Simulation", "/scratch/group/sflab/HOPE-MD/MD", _hopemd, _url_ready,

@@ -3,27 +3,22 @@
 
 By Aadhil Haq
 
-    python tools/docs_screenshots.py --adcp DIR --adcp-python PY --hopemd DIR [--out DIR]
+    python tools/docs_screenshots.py [--browser CHROME] [--out DIR]
 
 Serves the launcher's own page from this checkout, through its own handler, with a hub that
-answers from this machine instead of over SSH: the catalogue and its states are the real ones,
-the run folders are examples, and the two tools that are shown open in a window are really
-started here, by the same start lines the launcher sends to a login node, so the page inside
-each window is that tool's own. Then it drives the page the way a person would and saves each
-view the docs show. Run it again after the page changes, so the pictures never describe an
+answers from this machine instead of over SSH: the catalogue is the real one, two tools are shown
+running, and the run folders are examples. No tool is started: a tool's tab goes on to the tool's
+own page, which is the tool's to document. Then it drives the page the way a person would and saves
+each view the docs show. Run it again after the page changes, so the pictures never describe an
 older page.
 
 Each view is taken inside its own step: one that fails is reported by name at the end, with the
-others still taken. Needs Playwright with Chromium in the Python running this script. Run it on
-a compute node: it starts two tools' servers and a browser.
+others still taken. Needs Playwright in the Python running this script, with its own Chromium or
+a Chrome named by --browser. Run it on a compute node: it starts a browser.
 """
 import argparse
 import os
-import signal
-import subprocess
 import sys
-import tempfile
-import threading
 import time
 import traceback
 
@@ -37,8 +32,8 @@ IMG = os.path.join(HERE, "hope_labs", "web", "docs", "img")
 
 #: Every picture the pages use. Reported as missing when a step did not produce it, so the docs
 #: and this script cannot drift apart silently.
-WANT = ["tools.png", "tools-parts.png", "tool-block.png", "results.png", "tool-window.png",
-        "handoff.png", "starting.png"]
+WANT = ["tools.png", "tools-parts.png", "tool-block.png", "results.png", "handoff.png",
+        "starting.png"]
 
 #: The parts the Overview's legend names, in reading order. The numbers are drawn onto the
 #: picture here rather than described in the text, so the legend and the screenshot cannot
@@ -77,25 +72,22 @@ _BADGE_JS = """
 """
 
 
-class Local:
-    """A tool started on this machine: what the hub's Running is, without the SSH channel."""
+class Shown:
+    """A tool shown as running: what the hub's Running is, with nothing behind it."""
 
-    def __init__(self, tool, proc, port, token):
-        self.tool, self.proc, self.local_port, self.token = tool, proc, port, token
-        self.started = time.time()
+    def __init__(self, tool):
+        self.tool, self.local_port, self.token = tool, 9, ""
+        self.started = time.time() - 1500
 
     @property
     def url(self):
-        return "http://127.0.0.1:%d/%s" % (self.local_port, ("?t=" + self.token) if self.token else "")
+        return "http://127.0.0.1:%d%s" % (self.local_port, self.tool.page)
 
     def alive(self):
-        return self.proc.poll() is None
+        return True
 
     def stop(self):
-        try:
-            os.killpg(self.proc.pid, signal.SIGTERM)
-        except OSError:
-            pass
+        pass
 
 
 def example_runs(now):
@@ -121,39 +113,21 @@ def example_runs(now):
 class DemoHub(hubmod.Hub):
     """The real hub's page logic, answering from this machine."""
 
-    def __init__(self, installs, env, runs_root, slow=()):
-        super().__init__(None, user="jdoe", host="grace2", installs=installs)
-        self.env, self.runs_root, self.slow = env, runs_root, set(slow)
+    def __init__(self, running=(), slow=()):
+        super().__init__(None, user="jdoe", host="grace2")
+        self.slow = set(slow)
         self.rows = example_runs(time.time())
+        for key in running:
+            self.running[key] = Shown(catalogue.BY_KEY[key])
 
     def launch(self, key, runs=""):
         tool = catalogue.BY_KEY[key]
-        up = self.running.get(key)
-        if up is not None and up.alive():
+        if key in self.running:
             return self.state_of(key)
         if key in self.slow:
             # What a person sees while a tool's environment loads on a cold login node.
             time.sleep(40)
-            raise RuntimeError("%s was not started for the screenshots" % tool.name)
-        where = os.path.join(self.runs_root, key)
-        os.makedirs(where, exist_ok=True)
-        line = tool.command(install=self.install_of(tool), runs=where, port=0)
-        proc = subprocess.Popen(["bash", "-c", line], env=self.env, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, start_new_session=True)
-        buf, deadline = "", time.time() + 180
-        while time.time() < deadline:
-            got_line = proc.stdout.readline()
-            if not got_line:
-                break
-            buf += got_line
-            got = tool.ready(buf, 0)
-            if got:
-                # keep reading, or a full pipe stops the server mid page
-                threading.Thread(target=lambda: [None for _ in proc.stdout], daemon=True).start()
-                self.running[key] = Local(tool, proc, got[0], got[1])
-                print("    %s is up on %d" % (tool.name, got[0]), flush=True)
-                return self.state_of(key)
-        raise RuntimeError(self.why(tool, buf) or "%s did not start:\n%s" % (tool.name, buf[-800:]))
+        raise RuntimeError("%s was not started for the screenshots" % tool.name)
 
     def runs(self, refresh=False, limit_each=12):
         return self.rows
@@ -161,36 +135,23 @@ class DemoHub(hubmod.Hub):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--adcp", required=True, help="an ADCP_docking checkout")
-    ap.add_argument("--adcp-python", required=True, help="the Python ADCP runs in, as ADCP_PYTHON")
-    ap.add_argument("--hopemd", required=True, help="a HOPE-MD/MD checkout with its activate.sh")
-    ap.add_argument("--adfr-bin", default="",
-                    help="ADFRsuite's bin folder, put on PATH as an ADCP install's activate.sh does, "
-                         "so the docking page does not report its programs missing")
+    ap.add_argument("--browser", default="",
+                    help="a Chrome or Chromium to drive, when Playwright's own is not installed")
     ap.add_argument("--out", default=IMG)
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
 
-    work = tempfile.mkdtemp(prefix="hl_shots_")
-    env = dict(os.environ, ADCP_PYTHON=a.adcp_python, SCRATCH=work)
-    if a.adfr_bin:
-        env["PATH"] = a.adfr_bin + os.pathsep + env.get("PATH", "")
-    for var in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
-        env.pop(var, None)
-    demo = DemoHub({"adcp": a.adcp, "hopemd": a.hopemd}, env, work, slow=("aptamer",))
+    demo = DemoHub(running=("adcp", "hopemd"), slow=("aptamer",))
     httpd, _url = hubmod.serve(demo, port=0)          # serves from a thread of its own
     base = "http://127.0.0.1:%d" % httpd.server_address[1]
     print("  the page is at", base, flush=True)
     try:
-        for key in ("adcp", "hopemd"):
-            demo.launch(key)
-        return shoot(base, demo.token, a.out)
+        return shoot(base, demo.token, a.out, a.browser)
     finally:
-        demo.stop_all()
         httpd.shutdown()
 
 
-def shoot(base, token, out):
+def shoot(base, token, out, browser_path=""):
     from playwright.sync_api import sync_playwright
 
     errors, made = [], []
@@ -216,7 +177,8 @@ def shoot(base, token, out):
             errors.append("%s:\n%s" % (name, traceback.format_exc(limit=3)))
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = pw.chromium.launch(executable_path=browser_path or None,
+                                     args=["--no-sandbox", "--disable-dev-shm-usage"])
         ctx = browser.new_context(viewport={"width": 1280, "height": 820}, device_scale_factor=2,
                                   color_scheme="light")
         page = ctx.new_page()
@@ -246,21 +208,12 @@ def shoot(base, token, out):
             save(page, "results.png")
         step("Results", results_page)
 
-        def adcp_window():
-            page.goto("%s/tool?key=adcp&t=%s" % (base, token), wait_until="load")
-            page.wait_for_function("() => { const f = document.getElementById('t-frame');"
-                                   " return f && f.src && f.src.startsWith('http'); }", timeout=30000)
-            page.wait_for_timeout(5000)          # the tool's own page, loading inside the frame
-            save(page, "tool-window.png")
-        step("a tool's window", adcp_window)
-
         def handoff():
             run = "/scratch/user/jdoe/adcp_runs/MDM2_p53_peptides"
             page.goto("%s/tool?key=hopemd&t=%s&from=%s" % (base, token, run), wait_until="load")
-            page.wait_for_selector("#t-from:not([hidden])", timeout=20000)
-            page.wait_for_timeout(5000)
-            # the bar and the run under it: the tool's own page below is not what this shows
-            save(page, "handoff.png", union(page, ".toolbar", "#t-from", pad=1))
+            page.wait_for_selector("#t-ready:not([hidden])", timeout=20000)
+            page.wait_for_timeout(800)
+            save(page, "handoff.png", union(page, ".toolbar", "#t-from", "#t-ready", pad=1))
         step("a run handed over", handoff)
 
         def starting():

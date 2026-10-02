@@ -1,15 +1,15 @@
 # HOPE Labs
 
-One front for the HOPE Lab's tools on Grace. Sign in once, pick a tool, and it opens in the same
-window: docking, aptamer design, binder design, screening and molecular dynamics, each the page it
-already was, reached through one connection and one Duo approval.
+One front for the HOPE Lab's tools on Grace. Sign in once, pick a tool, and it opens in a tab of
+its own: docking, aptamer design, binder design, peptide design and molecular dynamics, each the
+page it already was, reached through one connection and one Duo approval.
 
 | Tool | What it does | Leaves behind |
 |---|---|---|
 | **ADCP docking** | Docks a peptide into a receptor and ranks the poses | docked poses |
 | **HOPE-Aptamer** | Designs aptamers against a target, folds and scores them | aptamer poses |
 | **BindCraft2** | Designs protein binders with AlphaFold 2 and ProteinMPNN | designed binders |
-| **HOPE-pipelines** | The screening pipelines and their monitor | screening hits |
+| **HOPE-pipelines** | Designs peptides with the lab's four pipelines, set up from one workspace | designed peptides |
 | **HOPE-MD** | Molecular dynamics of a complex on five engines | trajectories, binding energies |
 
 The tools are not changed in any way. Each already serves its own page on a login node; the
@@ -38,30 +38,21 @@ itself.
 
 **Tools** is the landing page: every tool a block, with what it does, what it takes from another
 tool and what it leaves for the next one, over a search box and the categories. **Launch** starts
-it on the login node and opens it in a tab of its own; the block then says *running*, and
-picking it again raises the window that is already open rather than starting a second copy.
-
-Chrome asks once whether this address may reach apps on your device: the tools' pages are served
-from it. Allow it. Refused, a tool's page still opens but its buttons do nothing, and the tab says
-so; allow "Apps on device" for the address under Chrome's site settings, or open **Plain page**,
-the tool on its own, which Chrome does not gate.
-
-**Every tool is one button from every other.** Across the top of each tool's window is a row of
-the others, so a pose that came out of docking is a click away from being simulated: the button
-opens that tool in its own tab too, starting it first if it is not up. The steps that follow
-the lab's own order of work are marked with an arrow. **Plain page** in that bar opens the tool
-without the launcher's bar, for anyone who would rather have the tool alone.
+it on the login node and opens it in a tab of its own, on the tool's own page, as the tool's own
+launcher opens it: HOPE-pipelines on its workspace, the others on their front page. The block then
+says *running*, and picking it again goes back to the tab that is already open rather than
+starting a second copy.
 
 **Results** lists the run folders of all five tools together, newest first, filtered by tool. Each
 run carries the step that usually follows it: *Simulate these poses in HOPE-MD* beside a docking
 run, *Simulate a design in HOPE-MD* beside a BindCraft2 campaign. Pressing one opens the tool that
-takes it, with the run's folder under its bar and a **Copy path** button, ready to be pasted into
-the tool's import box.
+takes it; its tab shows the run's folder with a **Copy path** button, and copies it on the way to
+the tool, ready to be pasted into the tool's import box.
 
 **Docs**, in the top right corner, opens the built-in documentation in a tab of its own: every
-part of the page, a tool's window, Results, installing the tools in your own scratch, and what each
-message means, with pictures of the page as it is. Each tool's window links to it too, and the bar along the
-bottom of the page carries the version, the copyright and who does the work. To change the
+part of the page, a tool's tab, Results, installing the tools in your own scratch, and what each
+message means, with pictures of the page as it is. The bar along the bottom of the page carries the
+version, the copyright and who does the work; each tool's own page has its own Docs and its own bar. To change the
 pictures, `tools/docs_screenshots.py` takes them again from the running page.
 
 **Sign out** closes the pages and the connection. Anything already queued on the cluster carries
