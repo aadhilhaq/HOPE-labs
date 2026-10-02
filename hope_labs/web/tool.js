@@ -1,4 +1,4 @@
-/* One tool in a window of its own: the tool's page, with a bar across the top that reaches every
+/* One tool in a tab of its own: the tool's page, with a bar across the top that reaches every
    other tool. The bar is served by the launcher, so the tool below it is untouched. */
 "use strict";
 
@@ -28,12 +28,13 @@ function flash(text, bad) {
   flashTimer = setTimeout(() => box.remove(), bad ? 16000 : 7000);
 }
 
-/* A tool gets one window, named after it: asking for it again raises the window that is already
-   open rather than starting a second copy. */
+/* A tool gets one tab, named after it: asking for it again goes to the tab that is already open
+   rather than starting a second copy. A plain tab, with the address bar and the other tabs beside
+   it, as any page opens; a window opened with a size of its own loses those. */
 function openTool(key) {
   const win = window.open("/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN),
-                          "hopelabs-" + key, "width=1480,height=940");
-  if (!win) flash("Chrome blocked the window. Click Pop-up blocked at the right of the address bar, choose Always allow, then pick the tool again.", true);
+                          "hopelabs-" + key);
+  if (!win) flash("Chrome blocked the tab. Click the blocked pop-up mark at the right of the address bar, choose Always allow, then pick the tool again.", true);
   else win.focus();
 }
 
@@ -51,7 +52,7 @@ async function paint() {
   state.tools.filter((t) => t.key !== KEY).forEach((other) => {
     const step = tool.next_steps.find((s) => s.to === other.key);
     const b = el("button", "btn sm" + (step ? " next" : ""), (step ? "→ " : "") + other.name);
-    b.title = step ? step.label : "open " + other.name + " in its own window";
+    b.title = step ? step.label : "open " + other.name + " in its own tab";
     // Inside the click and before anything is awaited: Chrome lets a window open only while the
     // click is fresh, and the window that opens starts its own tool and shows the wait itself.
     b.onclick = () => openTool(other.key);

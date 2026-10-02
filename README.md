@@ -14,7 +14,7 @@ already was, reached through one connection and one Duo approval.
 
 The tools are not changed in any way. Each already serves its own page on a login node; the
 launcher starts the one you pick over the connection it is holding, forwards a port to it and
-opens it in a window of its own. Nothing is installed on the cluster for this, and nothing about
+opens it in a tab of its own. Nothing is installed on the cluster for this, and nothing about
 the tools is installed on your computer.
 
 ## Using it
@@ -34,12 +34,12 @@ itself.
 
 **Tools** is the landing page: every tool a block, with what it does, what it takes from another
 tool and what it leaves for the next one, over a search box and the categories. **Launch** starts
-it on the login node and opens it in a window of its own; the block then says *running*, and
+it on the login node and opens it in a tab of its own; the block then says *running*, and
 picking it again raises the window that is already open rather than starting a second copy.
 
 **Every tool is one button from every other.** Across the top of each tool's window is a row of
 the others, so a pose that came out of docking is a click away from being simulated — the button
-opens that tool in its own window too, starting it first if it is not up. The steps that follow
+opens that tool in its own tab too, starting it first if it is not up. The steps that follow
 the lab's own order of work are marked with an arrow. **Plain page** in that bar opens the tool
 without the launcher's bar, for anyone who would rather have the tool alone.
 

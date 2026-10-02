@@ -157,21 +157,22 @@ function show(view) {
   paintRail();
 }
 
-/* Each tool opens in a window of its own, served by the launcher: the tool's own page with a bar
-   across the top that reaches the others. The window is named after the tool, so picking the same
-   one again raises the window already open instead of starting a second copy. */
+/* Each tool opens in a tab of its own, served by the launcher: the tool's own page with a bar
+   across the top that reaches the others. The tab is named after the tool, so picking the same one
+   again goes to the tab already open instead of starting a second copy. A plain tab, with the
+   address bar and the other tabs beside it; a window opened with a size of its own loses those. */
 function openWindow(key, from) {
   const url = "/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN)
             + (from ? "&from=" + encodeURIComponent(from) : "");
-  const win = window.open(url, "hopelabs-" + key, "width=1480,height=940");
-  if (!win) flash("Chrome blocked the window. Click Pop-up blocked at the right of the address bar, choose Always allow, then pick the tool again.", true);
+  const win = window.open(url, "hopelabs-" + key);
+  if (!win) flash("Chrome blocked the tab. Click the blocked pop-up mark at the right of the address bar, choose Always allow, then pick the tool again.", true);
   else win.focus();
 }
 
-/* Open the tool's window inside the click, before anything is awaited. Chrome lets a page open a
-   window only while the click that asked for it is fresh (about five seconds), and starting a tool
-   on the cluster takes far longer than that. So the window opens at once and starts the tool
-   itself, showing its progress where the person is looking. `from` is a run folder to hand over:
+/* Open the tool's tab inside the click, before anything is awaited. Chrome lets a page open a tab
+   only while the click that asked for it is fresh (about five seconds), and starting a tool on the
+   cluster takes far longer than that. So the tab opens at once and starts the tool itself, showing
+   its progress where the person is looking. `from` is a run folder to hand over:
    the tool's window shows it with a Copy button. */
 function open_tool(key, button, from) {
   const tool = byKey(key);
