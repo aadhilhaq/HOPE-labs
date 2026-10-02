@@ -154,35 +154,32 @@ function show(view) {
 /* Each tool opens in a window of its own, served by the launcher: the tool's own page with a bar
    across the top that reaches the others. The window is named after the tool, so picking the same
    one again raises the window already open instead of starting a second copy. */
-function openWindow(key) {
-  const win = window.open("/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN),
-                          "hopelabs-" + key, "width=1480,height=940");
+function openWindow(key, from) {
+  const url = "/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN)
+            + (from ? "&from=" + encodeURIComponent(from) : "");
+  const win = window.open(url, "hopelabs-" + key, "width=1480,height=940");
   if (!win) flash("Your browser blocked the window. Allow pop-ups for this page, or use the tool's link.", true);
   else win.focus();
 }
 
-async function open_tool(key, button) {
+/* Open the tool's window inside the click, before anything is awaited. Chrome lets a page open a
+   window only while the click that asked for it is fresh (about five seconds), and starting a tool
+   on the cluster takes far longer than that. So the window opens at once and starts the tool
+   itself, showing its progress where the person is looking. `from` is a run folder to hand over:
+   the tool's window shows it with a Copy button. */
+function open_tool(key, button, from) {
   const tool = byKey(key);
   if (!tool) return;
-  if (!tool.running) {
-    const was = button ? button.textContent : "";
-    if (button) { button.disabled = true; button.textContent = "starting…"; }
-    flash("Starting " + tool.name + " on the login node. The first start of the day takes a moment.");
-    try {
-      const got = await api("/api/launch", { tool: key });
-      Object.assign(tool, got);
-      flash(tool.name + " is ready.");
-    } catch (failure) {
-      flash(failure.message, true);
-      if (button) { button.disabled = false; button.textContent = was; }
-      await refresh();
-      return;
-    }
-    if (button) { button.disabled = false; button.textContent = was; }
+  openWindow(key, from);
+  if (!tool.running && button) {
+    const was = button.textContent;
+    button.disabled = true;
+    button.textContent = "starting…";
+    setTimeout(() => { button.disabled = false; button.textContent = was; }, 4000);
   }
-  openWindow(key);
-  paintTools();
-  paintRail();
+  // the window starts the tool; read the state back so this block says "running" when it is
+  setTimeout(() => { refresh().catch(() => {}); }, 3000);
+  setTimeout(() => { refresh().catch(() => {}); }, 20000);
 }
 
 async function stop_tool(key) {
@@ -255,11 +252,7 @@ async function loadRuns(refresh) {
       const to = byKey(step.to);
       if (!to) return;
       const b = el("button", "btn sm next", step.label);
-      b.onclick = async () => {
-        try { await navigator.clipboard.writeText(run.path); flash("The run's path is on your clipboard — paste it into " + to.name + ":\n" + run.path); }
-        catch (e) { flash("Open " + to.name + " and give it this folder:\n" + run.path); }
-        open_tool(step.to, b);
-      };
+      b.onclick = () => open_tool(step.to, b, run.path);
       acts.appendChild(b);
     });
     if (!run.next_steps.length) acts.appendChild(el("span", "why", "—"));

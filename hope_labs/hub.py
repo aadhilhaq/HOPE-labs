@@ -317,9 +317,30 @@ def handler_for(hub):
     return Handler
 
 
-def serve(hub, port=0, host="127.0.0.1"):
-    """Start the hub's own server. Returns (httpd, url)."""
-    httpd = ThreadingHTTPServer((host, port), handler_for(hub))
+class _Server(ThreadingHTTPServer):
+    # Off, so a busy port raises instead of being shared. On Windows SO_REUSEADDR lets a second
+    # process bind a port that is already listening, which would split one person's traffic
+    # between two launchers; HTTPServer turns it on by default.
+    allow_reuse_address = False
+
+
+def serve(hub, port=0, host="127.0.0.1", tries=8):
+    """Start the hub's own server. Returns (httpd, url).
+
+    The same port every time, for the same person. Chrome remembers "always allow pop-ups" per
+    address, and the address includes the port, so a page that moved port every session would be
+    blocked again every session however often it was allowed. `port` is tried first, then the
+    next few above it, then any free one, so a busy port never stops the launcher starting.
+    """
+    httpd = None
+    for want in ([port + n for n in range(tries)] if port else []):
+        try:
+            httpd = _Server((host, want), handler_for(hub))
+            break
+        except OSError:
+            continue
+    if httpd is None:
+        httpd = _Server((host, 0), handler_for(hub))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     bound = httpd.server_address[1]
     return httpd, "http://127.0.0.1:%d/?t=%s" % (bound, hub.token)

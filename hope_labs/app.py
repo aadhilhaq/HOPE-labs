@@ -75,6 +75,80 @@ def place_over(win, parent, log=None):
             pass
 
 
+def mark_image(size, teal="#0d5c6b", rust="#c2603a"):
+    """The HOPE Labs mark as a Tk image: four tiles, the last one rust, on a clear ground.
+
+    Drawn pixel by pixel rather than loaded, so the window's icon cannot go missing from a bundle
+    and needs neither Pillow nor an image file. The proportions are docs/brand/make_icon.py's, so
+    the title bar, the taskbar and the .exe all show the same mark.
+    """
+    img = tk.PhotoImage(width=size, height=size)
+    tile = max(3, round(size * 0.30))
+    gap = max(1, round(size * 0.08))
+    left = (size - (2 * tile + gap)) // 2
+    radius = tile * 0.26 if size >= 24 else 0
+    for row in (0, 1):
+        for col in (0, 1):
+            x0 = left + col * (tile + gap)
+            y0 = left + row * (tile + gap)
+            img.put(rust if (row, col) == (1, 1) else teal, to=(x0, y0, x0 + tile, y0 + tile))
+            if not radius:
+                continue
+            # round each tile's corners: clear the pixels outside the corner's quarter circle
+            r = int(radius)
+            for cx, cy, sx, sy in ((x0 + r, y0 + r, -1, -1), (x0 + tile - 1 - r, y0 + r, 1, -1),
+                                   (x0 + r, y0 + tile - 1 - r, -1, 1),
+                                   (x0 + tile - 1 - r, y0 + tile - 1 - r, 1, 1)):
+                for dx in range(r + 1):
+                    for dy in range(r + 1):
+                        if dx * dx + dy * dy > r * r:
+                            img.transparency_set(cx + sx * dx, cy + sy * dy, True)
+    return img
+
+
+def set_window_icon(root):
+    """The mark on every window this launcher opens: the title bar, the taskbar, and the Duo
+    and error dialogues, which Tk otherwise gives its own feather. Returns the images, which the
+    caller keeps: Tk drops an image the moment Python forgets it."""
+    try:
+        images = [mark_image(s) for s in (256, 64, 32, 16)]
+        root.iconphoto(True, *images)
+        return images
+    except Exception:                                           # noqa: BLE001
+        return []                                               # a missing icon is never fatal
+
+
+class Placeholder:
+    """Grey example text over an empty box, there until something is typed.
+
+    Tk has no placeholder of its own, and writing the example into the box would make it the
+    value: it would be saved, sent to the cluster as the account name and have to be deleted
+    before typing. A label laid over the box keeps it out of the variable altogether. Clicking the
+    label puts the cursor in the box, so it never gets in the way.
+    """
+
+    def __init__(self, entry, var, text=""):
+        self.entry, self.var = entry, var
+        style = ttk.Style()
+        ground = style.lookup("TEntry", "fieldbackground") or "white"
+        self.label = tk.Label(entry, text=text, fg="#8a9a9c", bg=ground, font="TkTextFont",
+                              anchor="w", cursor="xterm", padx=0, pady=0, bd=0)
+        self.label.bind("<Button-1>", lambda _e: (entry.focus_set(), entry.icursor("end")))
+        var.trace_add("write", lambda *_a: self.refresh())
+        self.refresh()
+
+    def set(self, text):
+        self.label.configure(text=text)
+        self.refresh()
+
+    def refresh(self):
+        if self.var.get() or not self.label.cget("text"):
+            self.label.place_forget()
+        else:
+            # inside the box's own left padding, centred on its line
+            self.label.place(x=5, rely=0.5, anchor="w")
+
+
 class Banner(tk.Canvas):
     """The header: the mark, the name and the build, drawn rather than pasted."""
 
@@ -130,6 +204,7 @@ class App:
 
         root.title(APP)
         root.minsize(660, 520)
+        self._icons = set_window_icon(root)
         pad = dict(padx=10, pady=5)
 
         build = os.environ.get("HOPELABS_BUILD") or __version__
@@ -144,15 +219,22 @@ class App:
         box.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
         box.bind("<<ComboboxSelected>>", lambda *_a: self._apply_site())
 
+        self._rows = {}
         self.host = self._row(form, 1, "Address", cfg.get("host", ""))
         self.user_label = ttk.Label(form, text="NetID")
         self.user_label.grid(row=2, column=0, sticky="e", padx=6, pady=4)
         self.user = tk.StringVar(value=cfg.get("user", ""))
-        ttk.Entry(form, textvariable=self.user).grid(row=2, column=1, sticky="ew", padx=6, pady=4)
+        user_box = ttk.Entry(form, textvariable=self.user)
+        user_box.grid(row=2, column=1, sticky="ew", padx=6, pady=4)
+        self.user_hint = Placeholder(user_box, self.user)
         self.jump = self._row(form, 3, "Gateway (ACES)", cfg.get("jump", ""))
         self.key = self._row(form, 4, "Key with certificate (ACES)", cfg.get("key", ""))
         self.note = ttk.Label(form, text="", foreground="#5f7070", wraplength=560, justify="left")
         self.note.grid(row=5, column=1, sticky="w", padx=6, pady=(0, 6))
+        # wrap to the column as it is, not a fixed width: the ACES rows have longer names, which
+        # narrow the column, and a fixed wrap then runs the note off the window's edge
+        form.bind("<Configure>", lambda e: self.note.configure(
+            wraplength=max(200, e.width - self.note.winfo_x() - 18)), add="+")
         self._touched = set()
         for name in ("host", "jump", "key"):
             getattr(self, name).trace_add("write", self._mark(name))
@@ -214,12 +296,24 @@ class App:
         self._set("jump", d["jump"])
         self._set("key", d["key"])
         self.user_label.configure(text=d["label"])
-        self.note.configure(text=("%s  %s" % (d["note"], d["hint"])).strip())
+        self.user_hint.set(d.get("placeholder", ""))
+        for label in ("Gateway (ACES)", "Key with certificate (ACES)"):
+            for widget in self._rows.get(label, ()):
+                if d["jump"]:
+                    widget.grid()
+                else:
+                    widget.grid_remove()
+        # the example in the account box already says what goes there
+        self.note.configure(text=d["note"] if d.get("placeholder") else
+                            ("%s  %s" % (d["note"], d["hint"])).strip())
 
     def _row(self, parent, r, label, value):
-        ttk.Label(parent, text=label).grid(row=r, column=0, sticky="e", padx=6, pady=4)
+        name = ttk.Label(parent, text=label)
+        name.grid(row=r, column=0, sticky="e", padx=6, pady=4)
         var = tk.StringVar(value=value)
-        ttk.Entry(parent, textvariable=var).grid(row=r, column=1, sticky="ew", padx=6, pady=4)
+        box = ttk.Entry(parent, textvariable=var)
+        box.grid(row=r, column=1, sticky="ew", padx=6, pady=4)
+        self._rows[label] = (name, box)
         return var
 
     # ---- the log --------------------------------------------------------
@@ -323,7 +417,12 @@ class App:
 
     # ---- the work -------------------------------------------------------
     def start(self):
-        host, user = self.host.get().strip(), self.user.get().strip()
+        host, typed = self.host.get().strip(), self.user.get().strip()
+        user = clusters.clean_user(typed)
+        if user != typed:
+            # put the cleaned name back in the box, so what is saved is what was used
+            self.user.set(user)
+            self.say("Using %s: the part before the @ is the account name." % user)
         if not host or not user:
             messagebox.showwarning(APP, "The cluster and your account are both needed.")
             return
@@ -347,7 +446,12 @@ class App:
             node = tunnel.hostname(self.t)
             self.say("Signed in on %s." % node)
             self.hub = hubmod.Hub(self.t, user=user, host=node, say=self.say)
-            self.httpd, self.url = hubmod.serve(self.hub, port=0)
+            want = clusters.suggested_port(user)
+            self.httpd, self.url = hubmod.serve(self.hub, port=want)
+            got = self.httpd.server_address[1]
+            if got != want:
+                self.say("  Port %d was busy, so the page is on %d. Chrome may ask about pop-ups "
+                         "once more for this address." % (want, got))
             self.say("HOPE Labs is open. The tools start when you pick one.")
             self.say("  If the page does not open, paste this in: %s" % self.url)
             self.say("")

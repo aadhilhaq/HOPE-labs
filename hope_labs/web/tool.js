@@ -5,6 +5,7 @@
 const Q = new URLSearchParams(location.search);
 const TOKEN = Q.get("t") || "";
 const KEY = Q.get("key") || "";
+const FROM = Q.get("from") || "";          // a run folder handed over from another tool
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
@@ -30,8 +31,10 @@ function flash(text, bad) {
 /* A tool gets one window, named after it: asking for it again raises the window that is already
    open rather than starting a second copy. */
 function openTool(key) {
-  window.open("/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN),
-              "hopelabs-" + key, "width=1480,height=940");
+  const win = window.open("/tool?key=" + encodeURIComponent(key) + "&t=" + encodeURIComponent(TOKEN),
+                          "hopelabs-" + key, "width=1480,height=940");
+  if (!win) flash("Chrome blocked the window. Click the blocked-pop-up icon at the right of the address bar and allow pop-ups for this address.", true);
+  else win.focus();
 }
 
 async function paint() {
@@ -49,29 +52,44 @@ async function paint() {
     const step = tool.next_steps.find((s) => s.to === other.key);
     const b = el("button", "btn sm" + (step ? " next" : ""), (step ? "→ " : "") + other.name);
     b.title = step ? step.label : "open " + other.name + " in its own window";
-    b.onclick = async () => {
-      if (!other.running) {
-        b.disabled = true;
-        const was = b.textContent;
-        b.textContent = "starting…";
-        try { await api("/api/launch", { tool: other.key }); }
-        catch (failure) { flash(failure.message, true); b.disabled = false; b.textContent = was; return; }
-        b.disabled = false;
-        b.textContent = was;
-      }
-      openTool(other.key);
-    };
+    // Inside the click and before anything is awaited: Chrome lets a window open only while the
+    // click is fresh, and the window that opens starts its own tool and shows the wait itself.
+    b.onclick = () => openTool(other.key);
     jump.appendChild(b);
   });
 
   if (!tool.running) {
-    flash(tool.name + " is not running. Starting it…");
+    $("t-wait").hidden = false;
+    $("t-wait-name").textContent = tool.name;
     try { Object.assign(tool, await api("/api/launch", { tool: KEY })); }
-    catch (failure) { flash(failure.message, true); return; }
+    catch (failure) {
+      $("t-wait").hidden = true;
+      flash(failure.message, true);
+      return;
+    }
+    $("t-wait").hidden = true;
   }
   const frame = $("t-frame");
   if (frame.dataset.url !== tool.url) { frame.src = tool.url; frame.dataset.url = tool.url; }
   $("t-plain").href = tool.url;
+}
+
+if (FROM) {
+  // A run handed over from another tool. The tools' own pages cannot be opened on a folder, so
+  // the folder is shown here, ready to copy into the tool's import box.
+  $("t-from").hidden = false;
+  $("t-from-path").textContent = FROM;
+  $("t-from-copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(FROM); flash("Copied. Paste it into the import box below."); }
+    catch (e) {
+      const range = document.createRange();
+      range.selectNodeContents($("t-from-path"));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      flash("Selected. Press Ctrl+C to copy it.");
+    }
+  };
 }
 
 $("t-home").onclick = () => window.open("/?t=" + encodeURIComponent(TOKEN), "hopelabs-home");

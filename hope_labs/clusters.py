@@ -19,6 +19,9 @@ SITES = {
         "auth": "password",
         "hint": "Your NetID.",
         "label": "NetID",
+        # Shown in the empty box. People type the address they sign in to TAMU email with, and
+        # SSH wants the part before the @.
+        "placeholder": "e.g. jdoe  (your NetID only, without @tamu.edu)",
         "note": "Password and a Duo approval, once, however many tools you open.",
     },
     "ACES (TAMU)": {
@@ -30,6 +33,7 @@ SITES = {
         "auth": "certificate",
         "hint": "Your ACCESS account (u.ab123456), not your NetID.",
         "label": "Account",
+        "placeholder": "e.g. u.ab123456  (your ACCESS account, not your NetID)",
         "note": "ACES takes a certificate, not a password: get id_aces_tamu and id_aces_tamu-cert.pub "
                 "from portal-aces.hprc.tamu.edu (Utilities > sshca), put both in ~/.ssh, and connect "
                 "within 49 hours. Not every tool is installed there.",
@@ -39,6 +43,7 @@ SITES = {
         "auth": "password",
         "hint": "Whatever you log in with.",
         "label": "Username",
+        "placeholder": "your username on that cluster",
         "note": "Any cluster with SLURM and the lab's tools installed in the same layout.",
     },
 }
@@ -58,9 +63,21 @@ def defaults_for(site_name, user=""):
         "note": site.get("note", ""),
         "hint": site.get("hint", ""),
         "label": site.get("label", "Username"),
+        "placeholder": site.get("placeholder", ""),
         "auth": site.get("auth", "password"),
         "feedback": FEEDBACK_TO,
     }
+
+
+def clean_user(text):
+    """The account as SSH wants it: no spaces, and no e-mail domain.
+
+    The commonest mistake is typing the TAMU e-mail address, which SSH reads as a user called
+    "jdoe@tamu.edu" and refuses in a way that looks like a wrong password. The part before the @
+    is the NetID, so that is what is used.
+    """
+    text = (text or "").strip()
+    return text.split("@", 1)[0].strip() if "@" in text else text
 
 
 ACCOUNT_IN_PATH = re.compile(r"^/scratch/user/([^/]+)(/|$)")

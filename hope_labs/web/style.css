@@ -124,3 +124,12 @@ table.runs tr:hover td{background:var(--wait)}
   .rail .rlabel,.rfoot{display:none}
   .brand{padding:0 10px 0 4px}
 }
+
+/* ------------------------------------------------------------------ the tool's window */
+.handoff{display:flex;align-items:center;gap:9px;padding:7px 14px;background:var(--rust-soft);
+         border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:12.5px}
+.handoff code{font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere;min-width:0}
+.wait{display:flex;align-items:center;gap:14px;padding:22px 24px;background:var(--card);
+      border-bottom:1px solid var(--line);font-size:13px;line-height:1.55}
+.wait .spin{width:20px;height:20px;flex:0 0 auto}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}

@@ -32,6 +32,21 @@
   <button class="btn sm" id="t-stop">Stop</button>
 </header>
 
+<div class="handoff" id="t-from" hidden>
+  <span class="lb">from the run</span>
+  <code id="t-from-path"></code>
+  <button class="btn sm" id="t-from-copy">Copy path</button>
+  <span class="why">paste it into this tool's import box</span>
+</div>
+
+<div class="wait" id="t-wait" hidden>
+  <span class="spin"></span>
+  <div>
+    <b>Starting <span id="t-wait-name"></span> on the login node</b><br>
+    <span class="why">The first start of the day takes up to a minute while its environment loads. This window fills in by itself.</span>
+  </div>
+</div>
+
 <iframe class="frame" id="t-frame" title="the tool"></iframe>
 
 <script src="/static/tool.js"></script>

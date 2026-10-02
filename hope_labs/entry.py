@@ -26,6 +26,12 @@ def main(argv=None):
                                                "Ctrl-C here stops the server", 8900) == (8900, "tok12345")
         assert tools.BY_KEY["hopemd"].ready("nothing yet", 0) is None
         assert clusters.half_typed("/scratch/user/j/x", "jane.doe")
+        # the account box: an e-mail address is cut to the name before the @, and every site
+        # shows an example in the empty box
+        assert clusters.clean_user(" jdoe@tamu.edu ") == "jdoe"
+        assert clusters.clean_user("jdoe") == "jdoe" and clusters.clean_user("") == ""
+        assert all(clusters.defaults_for(site)["placeholder"] for site in clusters.sites())
+        assert "@tamu.edu" in clusters.defaults_for("Grace (TAMU)")["placeholder"]
         notes = []
         try:
             import paramiko
