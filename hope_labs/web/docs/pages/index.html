@@ -1,0 +1,78 @@
+<h1>HOPE Labs</h1>
+<p class="lead">One front for the HOPE Lab's tools on Grace. Sign in once, pick a tool, and it
+opens in a window of its own: the page it always was, reached through one connection and one
+Duo approval.</p>
+
+<figure>
+<img src="img/tools-parts.png" alt="The Tools page, with its parts numbered from 1 to 10">
+<figcaption><b>The page HOPE Labs opens</b>, with two tools running. The numbers are the parts
+listed <a href="#the-page">below</a>. The account in these pictures and the runs in them are
+examples.</figcaption>
+</figure>
+
+<h2 id="what-it-does">What it does</h2>
+<p>The lab runs five tools on Grace, and each already serves a page of its own on a login
+node.</p>
+<table>
+<tr><th>Tool</th><th>What it does</th><th>Leaves behind</th></tr>
+<tr><td><b>ADCP docking</b></td><td>Docks a peptide into a receptor and ranks the poses</td><td>docked poses</td></tr>
+<tr><td><b>HOPE-Aptamer</b></td><td>Designs aptamers against a target, folds and scores them</td><td>aptamer poses</td></tr>
+<tr><td><b>BindCraft2</b></td><td>Designs protein binders with AlphaFold 2 and ProteinMPNN</td><td>designed binders</td></tr>
+<tr><td><b>HOPE-pipelines</b></td><td>The screening pipelines and their monitor</td><td>screening hits</td></tr>
+<tr><td><b>HOPE-MD</b></td><td>Molecular dynamics of a complex on five engines</td><td>trajectories and binding energies</td></tr>
+</table>
+<p>Opening one of them by hand takes a terminal, an SSH session, the command that starts it, a
+second session that forwards its port, and a Duo approval for each session. HOPE Labs signs in
+once, holds that one connection, and does the rest for whichever tool you pick: it starts the
+tool on the login node, waits for it to say it is ready, forwards a port to it, and shows it in a
+window of its own.</p>
+<p>The tools are not changed in any way. Each window shows the tool's own page, with its own
+Docs, under a thin bar that reaches the other four. Nothing is installed on the cluster for
+HOPE Labs, and nothing of the tools is installed on your computer.</p>
+
+<h2 id="the-page">The page</h2>
+<ol class="legend">
+<li><b>HOPE Labs</b>, and under it the account you signed in with and the login node it is
+on.</li>
+<li><b>Tools</b> and <b>Results</b>, the two views. Tools is where a session starts.</li>
+<li><b>The tools</b>, each with a dot that is green while it is running. Click a name to open
+that tool's window, starting the tool first if it is not up.</li>
+<li>The one thing to remember about cost: every tool runs under your own account, and the jobs
+it submits are charged to you.</li>
+<li>The <b>categories</b>. Pick one to show only those tools; pick it again, or <b>All</b>, to
+show every one.</li>
+<li><b>Search the tools</b> matches what you type against each tool's name, what it does and
+its category.</li>
+<li><b>Docs</b>, in the top right corner, opens these pages in a tab of their own.</li>
+<li>A <b>block</b> for each tool: what it does, whether it is running, and what it takes from
+another tool or leaves for the next one.</li>
+<li><b>Launch</b> starts the tool and opens its window. Once it is running the button says
+<b>Open</b>, and <b>Stop</b> appears beside it. The dashed buttons open the tool that usually
+comes next.</li>
+<li>The bar along the bottom: the version, the copyright, who does the work, and links to these
+pages and to <a href="citing.html">How to cite</a>.</li>
+</ol>
+
+<h2 id="a-session">A session, start to finish</h2>
+<ol class="steps">
+<li><b>Start HOPE Labs</b> on your computer and sign in to Grace with your NetID, your password
+and one Duo approval. The page opens in your browser by itself.</li>
+<li><b>Launch a tool.</b> Its window opens at once and fills in when the tool is ready. The
+first start of the day can take a minute while the tool's environment loads.</li>
+<li><b>Work in it</b> exactly as you would without HOPE Labs: prepare, submit, follow, read the
+results.</li>
+<li><b>Hand the result on.</b> Results lists the runs of every tool together, and the button
+beside a run opens the tool that takes it next, with the run's folder ready to copy.</li>
+<li><b>Sign out</b> when you are done. The pages close and the connection ends; jobs already in
+the queue carry on.</li>
+</ol>
+
+<h2 id="where-to-go-next">Where to go next</h2>
+<div class="cards">
+<a class="card" href="getting-started.html"><img src="img/tools.png" alt=""><span><b>Getting started</b>Download it, sign in, and allow its windows.</span></a>
+<a class="card" href="tools.html"><img src="img/tool-block.png" alt=""><span><b>The Tools page</b>The blocks, their buttons and the rail.</span></a>
+<a class="card" href="windows.html"><img src="img/tool-window.png" alt=""><span><b>A tool's window</b>The bar across the top, and Plain page.</span></a>
+<a class="card" href="results.html"><img src="img/results.png" alt=""><span><b>Results</b>Every tool's runs, and handing one on.</span></a>
+<a class="card" href="own-installs.html"><img src="img/handoff.png" alt=""><span><b>Your own copies on Grace</b>Install the tools in your own scratch and point HOPE Labs at them.</span></a>
+<a class="card" href="troubleshooting.html"><img src="img/starting.png" alt=""><span><b>When something goes wrong</b>What each message means, and what to do.</span></a>
+</div>

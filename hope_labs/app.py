@@ -34,11 +34,35 @@ def load():
 
 
 def save(d):
+    """Keep these settings, and whatever else is already in the file with them.
+
+    The sign-in boxes are not the only thing kept here: "root" and "installs" are written by
+    hand (docs/install-on-grace.md), and a save that wrote only its own keys would delete them
+    the moment Sign in was pressed, which is to say before they were ever read.
+    """
+    kept = load()                      # before the open below truncates it
+    kept.update(dict(d, schema=SCHEMA))
     try:
         with open(CONFIG, "w") as fh:
-            json.dump(dict(d, schema=SCHEMA), fh, indent=1)
+            json.dump(kept, fh, indent=1)
     except OSError:
         pass
+
+
+def chosen_installs(settings):
+    """Where this person's copies of the tools are, from the settings file.
+
+    Nothing set means the lab's own installs, which is what a member of the group wants. "root"
+    is one folder holding all five in the lab's layout; "installs" names a tool on its own and
+    wins over it. HOPE_LABS_ROOT in the environment beats the file, for trying one out without
+    editing it. Documented in docs/install-on-grace.md.
+    """
+    from . import tools as catalogue
+    root = os.environ.get("HOPE_LABS_ROOT", "") or (settings or {}).get("root", "")
+    named = (settings or {}).get("installs") or {}
+    if not isinstance(named, dict):
+        named = {}
+    return catalogue.installs_for(root, named)
 
 
 def centre_on(pw, ph, px, py, w, h, sw, sh):
@@ -445,7 +469,11 @@ class App:
             self.t = tunnel.connect(host, user, self.ask, jump=jump, key=key, log=self.detail)
             node = tunnel.hostname(self.t)
             self.say("Signed in on %s." % node)
-            self.hub = hubmod.Hub(self.t, user=user, host=node, say=self.say)
+            installs = chosen_installs(load())
+            if installs:
+                for key in sorted(installs):
+                    self.say("  %s: %s" % (key, installs[key]))
+            self.hub = hubmod.Hub(self.t, user=user, host=node, say=self.say, installs=installs)
             want = clusters.suggested_port(user)
             self.httpd, self.url = hubmod.serve(self.hub, port=want)
             got = self.httpd.server_address[1]

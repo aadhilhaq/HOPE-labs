@@ -25,6 +25,20 @@ def main(argv=None):
         assert tools.BY_KEY["pipelines"].ready("something\nopen http://127.0.0.1:8900/?t=tok12345\n"
                                                "Ctrl-C here stops the server", 8900) == (8900, "tok12345")
         assert tools.BY_KEY["hopemd"].ready("nothing yet", 0) is None
+        # A copy in somebody's own scratch: one root moves all five, a tool named on its own
+        # wins over it, and nothing set leaves the lab's installs alone.
+        mine = tools.installs_for("/scratch/user/jane.doe")
+        assert len(mine) == 5 and mine["adcp"] == "/scratch/user/jane.doe/ADCP_docking", mine
+        assert mine["hopemd"] == "/scratch/user/jane.doe/HOPE-MD/MD", mine
+        assert tools.installs_for("") == {}, "no root means the lab's own installs"
+        assert tools.installs_for("", {"hopemd": "/u/md"}) == {"hopemd": "/u/md"}
+        assert tools.installs_for("/x", {"adcp": "/y"})["adcp"] == "/y"
+        assert tools.rebase("/elsewhere/ADCP_docking", "/x") == "/elsewhere/ADCP_docking"
+        # the start line follows the copy, and the monitor's environment and run root with it
+        line = tools.BY_KEY["pipelines"].command(install=mine["pipelines"], port=8900)
+        assert "/scratch/user/jane.doe/HOPE-pipelines" in line, line
+        assert "/scratch/group/sflab" not in line, line
+        assert '"$HL_ROOT"/envs/hope/bin/activate' in line and '--root "$HL_ROOT"' in line, line
         assert clusters.half_typed("/scratch/user/j/x", "jane.doe")
         # the account box: an e-mail address is cut to the name before the @, and every site
         # shows an example in the empty box
@@ -41,7 +55,22 @@ def main(argv=None):
         try:
             from . import app
             assert hasattr(app, "App") and hasattr(app, "main"), "no window"
-            notes.append("window ok")
+            # A hand-written "root" has to survive the sign-in boxes being written over it:
+            # they are saved as Sign in is pressed, just before the installs are read.
+            import tempfile, shutil, os as _os
+            tmp = tempfile.mkdtemp()
+            try:
+                app.CONFIG, keep = _os.path.join(tmp, "settings.json"), app.CONFIG
+                app.save({"root": "/scratch/user/jane.doe"})
+                app.save({"site": "Grace (TAMU)", "user": "jane.doe"})
+                kept = app.load()
+                assert kept.get("root") == "/scratch/user/jane.doe", kept
+                assert kept.get("user") == "jane.doe", kept
+                assert app.chosen_installs(kept)["adcp"] == "/scratch/user/jane.doe/ADCP_docking"
+                app.CONFIG = keep
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+            notes.append("window ok, settings kept across a sign-in")
         except ImportError as exc:
             notes.append("no tkinter here (%s)" % exc)
         import os
@@ -49,6 +78,13 @@ def main(argv=None):
             path = os.path.join(hub.WEB, name)
             assert os.path.isfile(path), "the page is missing from the bundle: " + name
         notes.append("page ok")
+        # the docs ride along in web/, so a build that left them behind is caught here too
+        from . import docs
+        missing = docs.audit()
+        assert not missing, "the docs are not whole: " + "; ".join(missing[:3])
+        page = hub.index_page()
+        assert "__CREDIT" not in page and 'class="creditbar"' in page, "the bar along the bottom is missing"
+        notes.append("docs ok, %d pages" % len(docs.SITE.order))
         print("%s\n  %s\nSELFTEST OK" % (credit(), "\n  ".join(notes)))
         return 0
     from .app import main as run

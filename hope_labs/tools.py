@@ -26,6 +26,37 @@ MONITOR_READY = "Ctrl-C here stops the server"
 MONITOR_TOKEN = re.compile(r"\?t=([A-Za-z0-9_-]{8,})")
 
 
+#: Where the lab's own copies are. Every default install below sits under it, so one setting
+#: moves all five: a person outside the group installs them in their own scratch and names that
+#: folder instead. See docs/install-on-grace.md.
+LAB_ROOT = "/scratch/group/sflab"
+
+
+def rebase(install, root):
+    """`install` as it would be under `root`, keeping the layout the lab uses.
+
+    Only the lab root is replaced, so a path already pointing somewhere else is left alone and
+    a tool named individually keeps whatever it was given.
+    """
+    root = (root or "").strip().rstrip("/")
+    if not root or not install.startswith(LAB_ROOT + "/"):
+        return install
+    return root + install[len(LAB_ROOT):]
+
+
+def installs_for(root="", overrides=None):
+    """{tool key: where it is}, from one root and any tool named on its own."""
+    out = {}
+    for tool in TOOLS:
+        where = rebase(tool.install, root)
+        if where != tool.install:
+            out[tool.key] = where
+    for key, where in (overrides or {}).items():
+        if key in BY_KEY and str(where or "").strip():
+            out[key] = str(where).strip()
+    return out
+
+
 def remote_path(path):
     """A path for the far end's shell, with ~ still able to expand."""
     path = (path or "").strip()
@@ -90,12 +121,23 @@ class Tool:
 # Each sources the install's own activate.sh rather than naming a Python: that file is where the
 # installed layout is recorded, so the hub cannot drift away from what the installer did.
 
+def _activate(override):
+    """Enter the install's environment through its activate.sh, from inside the install.
+
+    A Python named in `override` stands in for the file. With neither, the tool still starts on
+    whatever python3 the login shell has, as it always did, but the line says first that the file
+    is missing: a tool that then fails is reported for that, not as a module it could not find.
+    """
+    return ('if [ -f ./activate.sh ]; then . ./activate.sh; '
+            'elif [ -z "${%s:-}" ]; then echo "NO-ACTIVATE $PWD/activate.sh"; fi; ' % override)
+
+
 def _hopemd(where, runs, port):
     args = "-m hopemd.server --host 127.0.0.1 --port %d" % port
     if runs:
         args += " --runs " + remote_path(runs)
-    return ('cd %s || exit 1; [ -f ./activate.sh ] && . ./activate.sh; '
-            'PY="${HOPEMD_PYTHON:-python3}"; PYTHONPATH=%s exec "$PY" %s' % (where, where, args))
+    return ('cd %s || exit 1; %sPY="${HOPEMD_PYTHON:-python3}"; PYTHONPATH=%s exec "$PY" %s'
+            % (where, _activate("HOPEMD_PYTHON"), where, args))
 
 
 def _bindcraft(where, runs, port):
@@ -110,14 +152,15 @@ def _adcp(where, runs, port):
     args = "-m adcp_dock.cli serve --host 127.0.0.1 --port %d" % port
     if runs:
         args += " --runs " + remote_path(runs)
-    return ('cd %s || exit 1; [ -f ./activate.sh ] && . ./activate.sh; '
-            'PY="${ADCP_PYTHON:-python3}"; PYTHONPATH=%s exec "$PY" %s' % (where, where, args))
+    return ('cd %s || exit 1; %sPY="${ADCP_PYTHON:-python3}"; PYTHONPATH=%s exec "$PY" %s'
+            % (where, _activate("ADCP_PYTHON"), where, args))
 
 
 def _aptamer(where, runs, port):
     # Its own launcher wants `serve port=N`, and it cannot choose a port itself.
     tail = (" runs=" + remote_path(runs)) if runs else ""
     return ("bash -lc '(module load Anaconda3) >/dev/null 2>&1 || true; "
+            'if [ ! -d %(w)s ]; then echo "NO-INSTALL %(w)s"; exit 3; fi; '
             'if [ -f %(w)s/activate.sh ]; then . %(w)s/activate.sh; '
             'else echo "NO-ACTIVATE %(w)s/activate.sh"; exit 3; fi; '
             "exec python -u -m hope_aptamer.cli serve port=%(p)d%(t)s'"
@@ -125,17 +168,22 @@ def _aptamer(where, runs, port):
 
 
 def _monitor(where, runs, port):
-    # The monitor is told its port. Its environment is a venv in the group space rather than an
-    # activate.sh beside the checkout, which is how that pipeline was installed.
+    # The monitor is told its port. Its environment is envs/hope beside the checkout, not an
+    # activate.sh inside it: a conda environment, which that pipeline's setup.sh gives a venv
+    # style bin/activate. So both the environment and the root it lists runs under are taken from
+    # the folder the checkout sits in. For the lab's own copy that is /scratch/group/sflab, as
+    # before; for a copy in somebody's scratch it follows them there without a second setting.
     #
     # --token on its own makes the monitor generate one and print it. It is off by default there,
     # and left off anyone else logged into the same login node could reach it over loopback, so
     # the hub always asks for it and reads it back out of the banner.
-    args = "-m hope_monitor --host 127.0.0.1 --port %d --token --root /scratch/group/sflab" % port
+    args = '-m hope_monitor --host 127.0.0.1 --port %d --token --root "$HL_ROOT"' % port
     if runs:
         args += " --runs " + remote_path(runs)
-    return ('source /scratch/group/sflab/envs/hope/bin/activate 2>/dev/null || true; '
-            'cd %s || exit 1; PYTHONPATH=%s exec python %s' % (where, where, args))
+    return ('cd %s || exit 1; HL_ROOT="$(cd .. && pwd)"; '
+            'if [ -f "$HL_ROOT"/envs/hope/bin/activate ]; then . "$HL_ROOT"/envs/hope/bin/activate; '
+            'else echo "NO-ENV $HL_ROOT/envs/hope"; fi; '
+            'PYTHONPATH=%s exec python %s' % (where, where, args))
 
 
 TOOLS = (
@@ -169,7 +217,9 @@ TOOLS = (
          blurb="The lab's screening pipelines and the monitor that follows them: cofolding, "
                "interaction analysis and the results of a campaign.",
          needs_port=True,
-         runs=("$SCRATCH/hope_runs", "/scratch/group/sflab/hope_runs"),
+         # $SCRATCH/hope/runs is where the monitor writes when it is not told otherwise, which
+         # is how this launcher starts it, and where my_workspace.sh points the notebooks
+         runs=("$SCRATCH/hope/runs", "/scratch/group/sflab/hope_runs"),
          gives="screening hits",
          next_steps=(("adcp", "Dock a hit in ADCP"), ("hopemd", "Simulate a hit in HOPE-MD"))),
 

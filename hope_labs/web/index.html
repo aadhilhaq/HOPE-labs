@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HOPE Labs</title>
 <link rel="stylesheet" href="/static/style.css">
+<style>
+  /* the bar along the bottom, shared with the docs; a message lifts clear of it */
+  :root{--accent:var(--teal)}
+  /*__CREDITBAR_CSS__*/
+  .flash{bottom:46px}
+  .top .docs{margin-left:4px}
+</style>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 62"><rect x="8" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="8" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="8" y="33" width="21" height="21" rx="5" fill="%230d5c6b"/><rect x="33" y="33" width="21" height="21" rx="5" fill="%23c2603a"/></svg>'>
 </head>
 <body>
@@ -48,6 +55,8 @@
         <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M11 11 L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <input id="q" placeholder="Search the tools" autocomplete="off">
       </span>
+      <a class="btn sm docs" href="/docs/index.html" target="_blank" rel="noopener"
+         title="How HOPE Labs works, with a picture of each part">Docs</a>
     </header>
     <div class="body"><div class="grid" id="grid"></div></div>
   </section>
@@ -61,12 +70,15 @@
       <span class="spacer"></span>
       <span class="chips" id="runfilter"></span>
       <button class="btn sm" id="runrefresh">Refresh</button>
+      <a class="btn sm docs" href="/docs/results.html" target="_blank" rel="noopener"
+         title="What Results lists, and how a run is handed on">Docs</a>
     </header>
     <div class="body" id="runbody"><p class="empty">Reading the run folders…</p></div>
   </section>
 
 </main>
 
+<!--__CREDITBAR__-->
 <script src="/static/app.js"></script>
 </body>
 </html>

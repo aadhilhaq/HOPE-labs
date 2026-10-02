@@ -17,17 +17,21 @@ launcher starts the one you pick over the connection it is holding, forwards a p
 opens it in a tab of its own. Nothing is installed on the cluster for this, and nothing about
 the tools is installed on your computer.
 
+It opens the lab's own copies under `/scratch/group/sflab`. To use your own, install the tools in
+your scratch on Grace and name that folder once:
+[docs/install-on-grace.md](docs/install-on-grace.md).
+
 ## Using it
 
-**Windows** — download `HOPE-Labs-windows.zip` from the [releases page](../../releases/latest),
+**Windows.** Download `HOPE-Labs-windows.zip` from the [releases page](../../releases/latest),
 unzip it **whole** (the folder travels together) and run `HOPE-Labs.exe`. It is unsigned, so the
-first run shows "Windows protected your PC": More info → Run anyway.
+first run shows "Windows protected your PC": choose More info, then Run anyway.
 
-**macOS (Apple silicon)** — download the `.zip`, unzip, then right-click the app → Open the first
-time.
+**macOS (Apple silicon).** Download `HOPE-Labs-mac-apple-silicon.zip`, unzip it, then right-click
+the app and choose Open the first time.
 
 Pick **Grace (TAMU)**, type your NetID, press **Sign in and open HOPE Labs**. Grace asks for your
-password and then a Duo approval — once, however many tools you then open. The page opens by
+password and then a Duo approval, once, however many tools you then open. The page opens by
 itself.
 
 ## What the page does
@@ -43,15 +47,22 @@ so; allow "Apps on device" for the address under Chrome's site settings, or open
 the tool on its own, which Chrome does not gate.
 
 **Every tool is one button from every other.** Across the top of each tool's window is a row of
-the others, so a pose that came out of docking is a click away from being simulated — the button
+the others, so a pose that came out of docking is a click away from being simulated: the button
 opens that tool in its own tab too, starting it first if it is not up. The steps that follow
 the lab's own order of work are marked with an arrow. **Plain page** in that bar opens the tool
 without the launcher's bar, for anyone who would rather have the tool alone.
 
 **Results** lists the run folders of all five tools together, newest first, filtered by tool. Each
-run carries the step that usually follows it — *Simulate these poses in HOPE-MD* beside a docking
-run, *Simulate a design in HOPE-MD* beside a BindCraft2 campaign. Pressing one puts the run's
-folder on your clipboard and opens the tool that takes it, ready to be pasted into its import box.
+run carries the step that usually follows it: *Simulate these poses in HOPE-MD* beside a docking
+run, *Simulate a design in HOPE-MD* beside a BindCraft2 campaign. Pressing one opens the tool that
+takes it, with the run's folder under its bar and a **Copy path** button, ready to be pasted into
+the tool's import box.
+
+**Docs**, in the top right corner, opens the built-in documentation in a tab of its own: every
+part of the page, a tool's window, Results, installing the tools in your own scratch, and what each
+message means, with pictures of the page as it is. Each tool's window links to it too, and the bar along the
+bottom of the page carries the version, the copyright and who does the work. To change the
+pictures, `tools/docs_screenshots.py` takes them again from the running page.
 
 **Sign out** closes the pages and the connection. Anything already queued on the cluster carries
 on without it: the launcher submits work, it does not hold it.
@@ -64,8 +75,10 @@ python -m hope_labs
 ```
 
 Python 3.10 or newer, with tkinter. `python -m hope_labs --selftest` checks the parts that need no
-display — including that each tool's start line and each of the three handshakes still parse — and
-`--version` prints the build.
+display, including that each tool's start line and each of the three handshakes still parse and that
+the docs came along, and `--version` prints the build. `tests/test_docs.py` checks the docs, their
+pictures and their routes, and `tests/test_start_lines.py` runs every start line against installs
+that are wrong on purpose, to check that the launcher names what is missing.
 
 ## Building the executables
 
@@ -82,9 +95,9 @@ on a Mac. `packaging/build_windows.bat` builds it on a Windows machine without a
 
 Everything that differs between tools is in [`hope_labs/tools.py`](hope_labs/tools.py): one entry
 per tool, giving where it is installed, the line that starts it, and how it says it is ready. Three
-handshakes are in use — the URL line that HOPE-MD, BindCraft2 and the docking console print, the
-two lines the aptamer pipeline prints, and the monitor's banner — and a new tool either matches one
-of them or brings a parser of its own. Nothing else in the launcher knows one tool from another.
+handshakes are in use: the URL line that HOPE-MD, BindCraft2 and the docking console print, the
+two lines the aptamer pipeline prints, and the monitor's banner. A new tool either matches one of
+them or brings a parser of its own. Nothing else in the launcher knows one tool from another.
 
 None of them takes a token on its command line, deliberately: a login node is shared and `ps` shows
 every argument to everybody on it, so each tool prints its token instead and the launcher reads it
@@ -92,8 +105,8 @@ off the channel it is already holding.
 
 ## Credits
 
-The tools are the HOPE Lab's, except BindCraft2, which is by the Pacesa lab; the methods they run —
-AlphaFold, ProteinMPNN, ADCP, Amber, OpenMM, GROMACS, NAMD, Desmond and the rest — belong to their
+The tools are the HOPE Lab's, except BindCraft2, which is by the Pacesa lab; the methods they run,
+AlphaFold, ProteinMPNN, ADCP, Amber, OpenMM, GROMACS, NAMD, Desmond and the rest, belong to their
 authors, and every run records what it used. Please acknowledge Texas A&M High Performance Research
 Computing.
 

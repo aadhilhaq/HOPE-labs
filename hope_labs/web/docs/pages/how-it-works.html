@@ -1,0 +1,71 @@
+<h1>How it works</h1>
+<p class="lead">One SSH connection, held by the program on your computer, and every tool reached
+through it: started on the login node, found by the line it prints, and forwarded to a port on
+your own computer.</p>
+
+<h2 id="one-connection">One connection</h2>
+<p>Signing in opens one SSH connection to a Grace login node, with your password and one Duo
+approval. Everything after that goes through it. Each tool is started as a process on that
+connection, and each tool's page reaches your browser through a port forwarded over it. That is
+why Duo is asked once however many tools you open, and why signing out, or the connection
+dropping, stops every tool's page together.</p>
+<p>Your password goes to the connection and nowhere else. It is not written down, logged, or
+offered back the next time.</p>
+
+<h2 id="starting-a-tool">Starting a tool</h2>
+<p>Each tool is started by one line of shell, kept with everything else HOPE Labs knows about the
+tools in <code>hope_labs/tools.py</code>. The line goes into the tool's install, enters its
+environment through the install's own <code>activate.sh</code>, and starts its page server on the
+login node, listening on that machine alone.</p>
+<p>The tool then says it is ready by printing its port and a token, and HOPE Labs reads that off
+the connection it already holds. Three ways of saying so are in use.</p>
+<table>
+<tr><th>Tool</th><th>What it prints when it is ready</th></tr>
+<tr><td>ADCP docking, BindCraft2, HOPE-MD</td><td>One line with its own address,
+<code>http://127.0.0.1:</code> then its port and <code>/?t=</code> then its token. Each picks a
+free port itself.</td></tr>
+<tr><td>HOPE-Aptamer</td><td>Two lines of its own, <code>HOPE-APTAMER-LAUNCHER port=</code> and
+<code>HOPE-APTAMER-TOKEN</code>. It is given its port.</td></tr>
+<tr><td>HOPE-pipelines</td><td>Its monitor's banner, with the token in it, ending in
+<code>Ctrl-C here stops the server</code>. It is given its port.</td></tr>
+</table>
+<p>HOPE Labs then forwards a free port on your computer to that port on the login node, and the
+tool's window shows the page through it. A tool that prints nothing of the kind within two
+minutes, or stops first, is reported with the reason: see
+<a href="troubleshooting.html#starting-a-tool">When something goes wrong</a>.</p>
+
+<h2 id="tokens">Tokens</h2>
+<p>None of the tools takes its token on the command line, and that is deliberate: a login node is
+shared, and <code>ps</code> shows every process's arguments to everybody on it. Each tool makes
+its own token and prints it, and HOPE Labs reads it off the connection, where nobody else can see
+it. Every request to a tool's page has to carry it.</p>
+<p>HOPE Labs' own page works the same way. It listens on your computer alone, and while the page
+itself loads without its token, every request for the session's state and every start or stop
+needs it. These docs are the one part that needs no token: they are the same for everyone.</p>
+
+<h2 id="the-same-port">The same port every time</h2>
+<p>The page is served on the same port of your computer every time you sign in, worked out from
+your account name. Chrome remembers <b>Always allow</b> for pop-ups per address, and the address
+includes the port, so a page that moved port every session would be blocked again every session.
+If that port is busy, the next few above it are tried, then any free one, and the log says
+so.</p>
+
+<h2 id="what-runs-where">What runs where</h2>
+<table>
+<tr><th>Where</th><th>What</th></tr>
+<tr><td>Your computer</td><td>HOPE Labs itself: the sign in window, the one SSH connection, the
+page in your browser, and the ports forwarded to each tool.</td></tr>
+<tr><td>The login node</td><td>Each tool's page server, started when you pick the tool and stopped
+when you stop it or sign out. It submits the work rather than doing it.</td></tr>
+<tr><td>The compute nodes</td><td>The work: every job a tool submits, through Slurm, under your
+account.</td></tr>
+</table>
+<p>Nothing is installed on the cluster for HOPE Labs, and the tools are not changed by it. Each
+window shows the tool's page as it would be without HOPE Labs, and <b>Plain page</b> opens it
+without the bar.</p>
+
+<h2 id="adding-a-tool">Adding a tool</h2>
+<p>Everything that differs between the tools is in <code>hope_labs/tools.py</code>: one entry per
+tool, giving where it is installed, the line that starts it, how it says it is ready, and where
+its runs are. A new tool either prints one of the three ready lines above or brings a reader of
+its own. Nothing else in HOPE Labs knows one tool from another.</p>
