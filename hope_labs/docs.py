@@ -26,7 +26,7 @@ NAV = [
     ("getting-started", "Getting started", "Start here"),
 
     ("tools", "The Tools page", "Using HOPE Labs"),
-    ("windows", "A tool's window", "Using HOPE Labs"),
+    ("windows", "A tool's tab", "Using HOPE Labs"),
     ("results", "Results", "Using HOPE Labs"),
     ("signing-out", "Signing out", "Using HOPE Labs"),
 
@@ -37,10 +37,11 @@ NAV = [
     ("citing", "How to cite", "Reference"),
 ]
 
-#: The same holders as the lab's other tools give in their LICENSE files. This repository has no
-#: LICENSE of its own yet; when it gets one, its copyright line belongs here word for word.
+#: The same holders as the lab's other tools give in their LICENSE files, and the statement
+#: HOPE-MD's and the pipelines' pages make. This repository has no LICENSE of its own yet; when it
+#: gets one, its copyright line belongs here word for word.
 COPYRIGHT = ("Copyright (c) 2026, Aadhil Haq and Sandun Fernando, "
-             "HOPE Lab, Texas A&M University")
+             "HOPE Lab, Texas A&M University. All rights reserved.")
 
 #: Who does the work, for the bar along the bottom: the one library every session runs through,
 #: the one tool that is not the lab's, and the machine everything runs on.

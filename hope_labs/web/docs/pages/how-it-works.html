@@ -30,7 +30,7 @@ free port itself.</td></tr>
 <code>Ctrl-C here stops the server</code>. It is given its port.</td></tr>
 </table>
 <p>HOPE Labs then forwards a free port on your computer to that port on the login node, and the
-tool's window shows the page through it. A tool that prints nothing of the kind within two
+tool's tab shows the page through it. A tool that prints nothing of the kind within two
 minutes, or stops first, is reported with the reason: see
 <a href="troubleshooting.html#starting-a-tool">When something goes wrong</a>.</p>
 
@@ -45,8 +45,9 @@ needs it. These docs are the one part that needs no token: they are the same for
 
 <h2 id="the-same-port">The same port every time</h2>
 <p>The page is served on the same port of your computer every time you sign in, worked out from
-your account name. Chrome remembers <b>Always allow</b> for pop-ups per address, and the address
-includes the port, so a page that moved port every session would be blocked again every session.
+your account name. Chrome remembers what you allowed (the tabs reaching this computer, and pop-ups)
+per address, and the address includes the port, so a page that moved port every session would be
+asked again every session.
 If that port is busy, the next few above it are tried, then any free one, and the log says
 so.</p>
 
@@ -61,7 +62,7 @@ when you stop it or sign out. It submits the work rather than doing it.</td></tr
 account.</td></tr>
 </table>
 <p>Nothing is installed on the cluster for HOPE Labs, and the tools are not changed by it. Each
-window shows the tool's page as it would be without HOPE Labs, and <b>Plain page</b> opens it
+tab shows the tool's page as it would be without HOPE Labs, and <b>Plain page</b> opens it
 without the bar.</p>
 
 <h2 id="adding-a-tool">Adding a tool</h2>

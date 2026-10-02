@@ -1,10 +1,10 @@
-<h1>A tool's window</h1>
-<p class="lead">Each tool opens in a window of its own: the tool's own page, under a thin bar
+<h1>A tool's tab</h1>
+<p class="lead">Each tool opens in a tab of its own: the tool's own page, under a thin bar
 that reaches every other tool.</p>
 
 <figure>
-<img src="img/tool-window.png" alt="ADCP docking in its window, with the HOPE Labs bar above the tool's own page">
-<figcaption><b>ADCP docking in its window.</b> The bar along the top is HOPE Labs. Everything
+<img src="img/tool-window.png" alt="ADCP docking in its tab, with the HOPE Labs bar above the tool's own page">
+<figcaption><b>ADCP docking in its tab.</b> The bar along the top is HOPE Labs. Everything
 under it, down to the tool's own Docs button and the bar along its bottom, is ADCP docking's own
 page.</figcaption>
 </figure>
@@ -12,15 +12,15 @@ page.</figcaption>
 <h2 id="the-bar">The bar</h2>
 <table>
 <tr><th>Part</th><th>What it does</th></tr>
-<tr><td>The name and its line</td><td>Which tool this window is.</td></tr>
+<tr><td>The name and its line</td><td>Which tool this tab is.</td></tr>
 <tr><td><b>open next</b></td><td>A button for every other tool. The dashed ones, marked with an
 arrow, are the tools that usually come after this one in the lab's order of work; hold the pointer
-over one to see the step. Each opens that tool's own window, starting the tool if it is not
+over one to see the step. Each opens that tool's own tab, starting the tool if it is not
 up.</td></tr>
-<tr><td><b>Plain page</b></td><td>Opens the tool's page in a tab without this bar, for anyone who
+<tr><td><b>Plain page</b></td><td>Opens the tool's page in another tab without this bar, for anyone who
 would rather have the tool alone. It is the same page, through the same connection.</td></tr>
 <tr><td><b>All tools</b></td><td>Opens the Tools page.</td></tr>
-<tr><td><b>Stop</b></td><td>Stops this tool, as Stop on its block does. The window can then be
+<tr><td><b>Stop</b></td><td>Stops this tool, as Stop on its block does. The tab can then be
 closed.</td></tr>
 <tr><td><b>HOPE Labs docs</b></td><td>Opens these pages. The tool's own documentation is behind
 the Docs button on its page, under the bar.</td></tr>
@@ -28,23 +28,25 @@ the Docs button on its page, under the bar.</td></tr>
 
 <h2 id="while-it-starts">While it starts</h2>
 <figure>
-<img src="img/starting.png" alt="The window of a tool that is starting: the bar, and under it Starting HOPE-Aptamer on the login node">
-<figcaption><b>A tool starting.</b> The window opens at once, and fills in by itself when the
+<img src="img/starting.png" alt="The tab of a tool that is starting: the bar, and under it Starting HOPE-Aptamer on the login node">
+<figcaption><b>A tool starting.</b> The tab opens at once, and fills in by itself when the
 tool is ready.</figcaption>
 </figure>
-<p>A tool that is not running yet is started by its window, which shows <b>Starting</b> and the
+<p>A tool that is not running yet is started by its tab, which shows <b>Starting</b> and the
 tool's name under the bar while it waits. The first start of the day can take up to a minute while
 the tool's environment loads on the login node. HOPE Labs waits up to two minutes for the tool to
-say it is ready. Past that, or if the tool stops before then, the window says why in a message at
+say it is ready. Past that, or if the tool stops before then, the tab says why in a message at
 the bottom right; <a href="troubleshooting.html#starting-a-tool">When something goes wrong</a>
 lists those messages.</p>
 
-<h2 id="one-window-per-tool">One window per tool</h2>
-<p>Each window is named after its tool, so asking for a tool again, from its block, from the
-column on the left or from another tool's bar, brings its window forward instead of starting a
-second copy of the tool. The window's page is loaded again when that happens, so a form you had
-filled in there and not yet submitted may need filling in again.</p>
-<p>Closing a window does not stop its tool. It keeps running on the login node until you press
+<h2 id="one-tab-per-tool">One tab per tool</h2>
+<p>Each tab is named after its tool, so asking for a tool again, from its block, from the column on
+the left or from another tool's bar, goes to its tab instead of starting a second copy of the tool.
+The tab's page is loaded again when that happens, so a form you had filled in there and not yet
+submitted may need filling in again.</p>
+<p>When Chrome is refusing the tool's requests to this computer, a line under the bar says so: see
+<a href="getting-started.html#allow-its-tabs">Let its tabs reach this computer</a>.</p>
+<p>Closing a tab does not stop its tool. It keeps running on the login node until you press
 <b>Stop</b> or sign out, and opening it again is quick.</p>
 
 <h2 id="handing-on-a-run">Handing on a run</h2>
@@ -53,7 +55,7 @@ filled in there and not yet submitted may need filling in again.</p>
 <figcaption><b>HOPE-MD, opened from a docking run in Results.</b> The run's folder sits under the
 bar, ready to copy into HOPE-MD's own import box below it. The run is an example.</figcaption>
 </figure>
-<p>When a window is opened from a run in <a href="results.html">Results</a>, the run's folder is
+<p>When a tab is opened from a run in <a href="results.html">Results</a>, the run's folder is
 shown under the bar with a <b>Copy path</b> button. The tools' own pages cannot yet be opened on a
 folder, so the path is handed over by hand: copy it, and paste it into the tool's import box. If
 your browser will not let the page copy, the path is selected for you instead, ready for
