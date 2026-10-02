@@ -37,6 +37,11 @@ tool and what it leaves for the next one, over a search box and the categories. 
 it on the login node and opens it in a tab of its own; the block then says *running*, and
 picking it again raises the window that is already open rather than starting a second copy.
 
+Chrome asks once whether this address may reach apps on your device: the tools' pages are served
+from it. Allow it. Refused, a tool's page still opens but its buttons do nothing, and the tab says
+so; allow "Apps on device" for the address under Chrome's site settings, or open **Plain page**,
+the tool on its own, which Chrome does not gate.
+
 **Every tool is one button from every other.** Across the top of each tool's window is a row of
 the others, so a pose that came out of docking is a click away from being simulated — the button
 opens that tool in its own tab too, starting it first if it is not up. The steps that follow

@@ -39,6 +39,13 @@
   <span class="why">paste it into this tool's import box</span>
 </div>
 
+<div class="handoff" id="t-blocked" hidden>
+  <span class="lb">blocked</span>
+  <span>Chrome is refusing this tool's requests to this computer. When Chrome asks whether this address may reach
+  apps on your device, allow it; or allow "Apps on device" under Site settings for this address; then reload this tab.
+  <a id="t-blocked-plain" target="_blank" rel="noopener">The plain page</a> opens the tool on its own, which Chrome does not gate.</span>
+</div>
+
 <div class="wait" id="t-wait" hidden>
   <span class="spin"></span>
   <div>
@@ -47,7 +54,10 @@
   </div>
 </div>
 
-<iframe class="frame" id="t-frame" title="the tool"></iframe>
+<!-- the tool is another address on this computer: Chrome lets a frame reach one only when the page that holds
+     the frame passes the permission down (loopback-network and local-network since Chrome 145, local-network-access
+     in 142 to 144; a browser ignores a name it does not know) -->
+<iframe class="frame" id="t-frame" title="the tool" allow="loopback-network *; local-network *; local-network-access *"></iframe>
 
 <script src="/static/tool.js"></script>
 </body>

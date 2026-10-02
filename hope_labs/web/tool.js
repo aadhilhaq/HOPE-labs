@@ -70,9 +70,24 @@ async function paint() {
     }
     $("t-wait").hidden = true;
   }
+  await reachable(tool);
   const frame = $("t-frame");
   if (frame.dataset.url !== tool.url) { frame.src = tool.url; frame.dataset.url = tool.url; }
   $("t-plain").href = tool.url;
+}
+
+/* Chrome gates a page's requests to an address on this computer behind a permission. The tool below
+   would ask from inside its frame, where a refusal is silent and leaves its buttons doing nothing; so
+   the hub asks first from here, where Chrome puts the question beside the address bar, and says what
+   to do when the answer was no. The tool's plain page, on its own, is not gated. */
+async function reachable(tool) {
+  try {
+    await fetch(tool.url, { mode: "no-cors", cache: "no-store" });
+    $("t-blocked").hidden = true;
+  } catch (e) {
+    $("t-blocked").hidden = false;
+    $("t-blocked-plain").href = tool.url;
+  }
 }
 
 if (FROM) {
