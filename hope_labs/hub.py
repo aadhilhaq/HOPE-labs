@@ -161,11 +161,18 @@ class Hub:
         """What went wrong, in terms that can be acted on."""
         low = buf.lower()
         where = self.install_of(tool)
+        # The markers come from the start lines in tools.py. A missing install is checked first:
+        # with no folder there is no activate.sh or environment either, and that is not the news.
+        if "no-install" in low or ("no such file or directory" in low and "cd" in low):
+            return "there is no %s on the cluster: %s" % (tool.name, where)
         if "no-activate" in low:
             return ("%s is installed at %s but its activate.sh is missing, so its environment "
-                    "cannot be entered." % (tool.name, where))
-        if "no such file or directory" in low and "cd" in low:
-            return "there is no %s on the cluster: %s" % (tool.name, where)
+                    "cannot be entered. Running its install.sh again writes it."
+                    % (tool.name, where))
+        if "no-env" in low:
+            return ("%s is installed at %s but there is no environment at envs/hope beside it. "
+                    "HOPE Labs looks for the environment in the folder that holds the install, "
+                    "where its install.sh puts it." % (tool.name, where))
         if "no module named" in low:
             return ("%s was not found in its install at %s.\n%s" % (tool.name, where, tail(buf)))
         if "future feature annotations" in low or "syntaxerror" in low:
@@ -246,6 +253,15 @@ class Hub:
         return found
 
 
+def index_page():
+    """The launcher's page, with the bar along its bottom filled in from the docs' credit line."""
+    from . import docs, docskit
+    with open(os.path.join(WEB, "index.html"), encoding="utf-8") as fh:
+        page = fh.read()
+    return (page.replace("/*__CREDITBAR_CSS__*/", docskit.CREDITBAR_CSS.strip())
+                .replace("<!--__CREDITBAR__-->", docs.creditbar()))
+
+
 def tail(buf, n=12):
     lines = [l for l in (buf or "").splitlines() if l.strip()]
     return "\n".join(lines[-n:])
@@ -281,11 +297,26 @@ def handler_for(hub):
             with open(path, "rb") as handle:
                 self._send(200, kind, handle.read())
 
+        def _docs(self, path):
+            from . import docs
+            status, kind, body, location = docs.respond(path)
+            if location:
+                self.send_response(status)
+                self.send_header("Location", location)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
+            return self._send(status, kind, body)
+
         def do_GET(self):                                       # noqa: N802
             url = urlparse(self.path)
             query = parse_qs(url.query)
             if url.path in ("/", "/index.html"):
-                return self._static("index.html")
+                return self._send(200, "text/html; charset=utf-8", index_page().encode("utf-8"))
+            # The documentation needs no token: it is the same for everyone, holds nothing of the
+            # session, and a page of it kept as a bookmark has no token to carry.
+            if url.path == "/docs" or url.path.startswith("/docs/"):
+                return self._docs(url.path)
             # Each tool opens in a window of its own, and that window is served from here: the
             # tool's own page below, a bar across the top that reaches every other tool.
             if url.path == "/tool":

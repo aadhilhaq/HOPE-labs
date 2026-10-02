@@ -1,0 +1,172 @@
+<h1>Your own copies on Grace</h1>
+<p class="lead">HOPE Labs opens the lab's own installs unless told otherwise. To use copies in
+your own scratch, install each tool there once, then name that folder in one setting.</p>
+
+<p>This is for a researcher with a Grace account who is not in the lab's group on Grace, or who
+wants copies of their own. Your personal scratch is <code>/scratch/user/&lt;NetID&gt;</code>;
+replace <code>&lt;NetID&gt;</code> with yours everywhere below. Nothing is installed on Grace for
+HOPE Labs itself: what you install is the five tools. The same guide is in the repository, as
+<code>docs/install-on-grace.md</code>.</p>
+
+<h2 id="before-you-start">Before you start</h2>
+<p><b>Ask for access.</b> Three of the five are not open. The <code>LICENSE</code> files of
+HOPE-aptamer-pipeline and HOPE-pipelines both say the software is not open source and carries no
+licence to use outside the HOPE Lab, and HOPE-MD's README says its repository is private while
+HOPE-MD is in testing. ADCP docking carries a BSD 3-Clause licence. BindCraft2 is by the Pacesa
+lab, and the page HOPE Labs starts is the lab's own cluster side, which its README asks you not to
+offer to people outside the group. Write to the lab's principal investigator first.</p>
+<p>The clone lines below are each repository's own address, in the form its own documentation
+gives it. For a private repository either form wants your own GitHub access: an SSH key on the
+login node, or a token for the HTTPS lines.</p>
+<p><b>Check your file count, not your disk space.</b> Grace caps the number of files as well as
+the bytes.</p>
+<pre>showquota</pre>
+<p>Read the File Usage column. HOPE-Aptamer's <code>GRACE.md</code> measured personal scratch on
+Grace at 250,000 files with 35,632 free, against an environment of roughly 60,000 files, and says
+plainly that it does not fit there. HOPE-pipelines' own environment is about 67,000 files. So
+five full environments will not fit in one personal scratch allowance as those pages measured it.
+Clear space with <code>conda clean -a -y</code>, take the smaller environment where a tool offers
+one, or share one between tools as shown under <a href="#hope-md">HOPE-MD</a>.</p>
+<p><b>Nothing in your home directory.</b> Home on Grace is 10 GB and 10,000 files.
+HOPE-pipelines' and HOPE-MD's installers refuse a prefix under <code>$HOME</code>; the other two
+leave it to you, so always give a prefix.</p>
+<p><b>Install from a login node.</b> Each installer downloads something, and Grace's compute
+nodes have no outbound network.</p>
+<p><b>Use one folder for all five.</b> HOPE Labs looks for the tools under one root, in the layout
+the lab uses. Give <code>/scratch/user/&lt;NetID&gt;</code> to each installer as its prefix and
+you get exactly that layout.</p>
+<table>
+<tr><th>Tool</th><th>Its key</th><th>Folder under your root</th></tr>
+<tr><td>ADCP docking</td><td><code>adcp</code></td><td><code>ADCP_docking</code></td></tr>
+<tr><td>HOPE-Aptamer</td><td><code>aptamer</code></td><td><code>HOPE-aptamer-pipeline</code></td></tr>
+<tr><td>BindCraft2</td><td><code>bindcraft</code></td><td><code>BindCraft2</code></td></tr>
+<tr><td>HOPE-pipelines</td><td><code>pipelines</code></td><td><code>HOPE-pipelines</code></td></tr>
+<tr><td>HOPE-MD</td><td><code>hopemd</code></td><td><code>HOPE-MD/MD</code></td></tr>
+</table>
+
+<h2 id="adcp-docking">ADCP docking</h2>
+<p>Clone it where it will stay: <code>install.sh</code> writes an <code>activate.sh</code> beside
+the checkout and records that path inside it.</p>
+<pre>module load Anaconda3
+git clone https://github.com/aadhilhaq/ADCP_docking.git /scratch/user/&lt;NetID&gt;/ADCP_docking
+cd /scratch/user/&lt;NetID&gt;/ADCP_docking
+./install.sh /scratch/user/&lt;NetID&gt;</pre>
+<p>The prefix is not optional on a cluster. The script puts the conda environment in
+<code>&lt;prefix&gt;/envs/adcp</code>, its package cache in
+<code>&lt;prefix&gt;/conda_shared/pkgs</code> and ADFRsuite in
+<code>&lt;prefix&gt;/tools/docking</code>. It says the slow part is 15 to 40 minutes, almost all
+of it AmberTools, which is about 60,000 files by itself. ADFRsuite is roughly a 100 MB download
+from Scripps, checked against a pinned checksum. <code>./install.sh --check</code> reports what it
+finds and changes nothing. Then:</p>
+<pre>source /scratch/user/&lt;NetID&gt;/ADCP_docking/activate.sh
+adcp-dock check</pre>
+<p>Some parts of ADFRsuite are free for academic use only; <code>THIRD_PARTY_NOTICES.md</code>
+lists the terms.</p>
+
+<h2 id="hope-aptamer">HOPE-Aptamer</h2>
+<p>The repository's name begins with a hyphen, which is part of the name.</p>
+<pre>module load Anaconda3
+git clone git@github.com:aadhilhaq/-HOPE-aptamer-pipeline.git \
+    /scratch/user/&lt;NetID&gt;/HOPE-aptamer-pipeline
+cd /scratch/user/&lt;NetID&gt;/HOPE-aptamer-pipeline
+./install.sh /scratch/user/&lt;NetID&gt;</pre>
+<p>The prefix gives you <code>&lt;prefix&gt;/envs/hope-aptamer</code> for the environment and
+<code>&lt;prefix&gt;/tools/docking</code> for Vina and ADFRsuite, and the script writes the
+<code>activate.sh</code> that HOPE Labs sources. It takes 15 to 40 minutes.
+<code>GRACE.md</code> budgets 80,000 files for the full environment and states that it does not
+fit in personal scratch on Grace. If <code>showquota</code> agrees, use:</p>
+<pre>./install.sh --minimal /scratch/user/&lt;NetID&gt;      # no AmberTools: no 3D builds, no MM-GBSA</pre>
+<p>Folding with Boltz is a separate installer, <code>./install_boltz.sh</code>, into an
+environment of its own. <code>GRACE.md</code> also covers a read only deploy key, for an account
+with no GitHub access of its own.</p>
+
+<h2 id="bindcraft2">BindCraft2</h2>
+<p><b>This one you cannot install from the repository cloned here.</b> <code>BindCraft2</code> in
+the lab's space is the desktop launcher only. Its README says the page, the submit tool and the
+environment live with the cluster side install, and that <code>sflab/README.md</code> inside that
+install documents them. HOPE Labs starts <code>sflab/bc2-serve</code> there. That cluster side is
+not in the launcher repository, so this page has no command that installs it: read
+<code>sflab/README.md</code> in the lab's install at <code>/scratch/group/sflab/BindCraft2</code>,
+and the upstream project at
+<a href="https://github.com/PacesaLab/BindCraft2" target="_blank" rel="noopener">github.com/PacesaLab/BindCraft2</a>.
+A campaign is queued on a GPU node, so you need an allocation that can use one.</p>
+
+<h2 id="hope-pipelines">HOPE-pipelines</h2>
+<pre>module load Anaconda3
+git clone https://github.com/aadhilhaq/HOPE-pipelines.git /scratch/user/&lt;NetID&gt;/HOPE-pipelines
+cd /scratch/user/&lt;NetID&gt;/HOPE-pipelines
+./install.sh /scratch/user/&lt;NetID&gt;</pre>
+<p><code>install.sh</code> builds the environment in <code>&lt;prefix&gt;/envs/hope</code>, keeps
+conda's and pip's caches under the prefix, clones the four pipelines beside the checkout, then runs
+<code>setup.sh</code> and <code>my_workspace.sh</code> for you. It puts the environment at twenty
+minutes to an hour and about 67,000 files, and <code>GRACE.md</code> at roughly 3 GB with
+AmberTools. Adding <code>--minimal</code> builds from <code>environment-minimal.yml</code> instead,
+which leaves out MM-GBSA.</p>
+<p>Keep the environment and the checkout under the same root: HOPE Labs starts the monitor by
+sourcing <code>&lt;root&gt;/envs/hope/bin/activate</code> and running the checkout with
+<code>PYTHONPATH</code> set. To run <code>python3 -m hope_monitor</code> yourself,
+<code>GRACE.md</code> notes that <code>conda env create</code> brings the dependencies and not the
+package, so install it into the environment once:</p>
+<pre>/scratch/user/&lt;NetID&gt;/envs/hope/bin/python -m pip install -e \
+    /scratch/user/&lt;NetID&gt;/HOPE-pipelines</pre>
+
+<h2 id="hope-md">HOPE-MD</h2>
+<pre>P=/scratch/user/&lt;NetID&gt;
+git clone git@github.com:aadhilhaq/HOPE-MD.git $P/HOPE-MD/MD &amp;&amp; bash $P/HOPE-MD/MD/install.sh $P</pre>
+<p>That gives <code>&lt;prefix&gt;/HOPE-MD/MD</code> for the checkout and
+<code>&lt;prefix&gt;/HOPE-MD/env</code> for its environment, with caches in
+<code>&lt;prefix&gt;/HOPE-MD/.cache</code>. The environment is a venv on a base Python that already
+has OpenMM, PDBFixer, pdb2pqr and AmberTools. The script looks in <code>HOPEMD_BASE_PYTHON</code>
+first, then the lab's group environments, which you cannot read from outside the group, and
+failing that builds a conda environment in <code>&lt;prefix&gt;/HOPE-MD/conda</code>, which its
+README calls tens of thousands of files. The HOPE-pipelines environment above passes the same
+test, so name it and that build is skipped:</p>
+<pre>HOPEMD_BASE_PYTHON=/scratch/user/&lt;NetID&gt;/envs/hope/bin/python3 bash $P/HOPE-MD/MD/install.sh $P</pre>
+<p>The script then checks that HOPE-MD imports and audits which of its <code>module load</code>
+lines work here, which takes a minute or two. The engines are never installed: they are Grace's own
+modules. Its README's Requirements table is plain about what that needs, and none of it is yours
+to grant: the <code>amber</code> group for every run, the <code>desmond</code> group for Desmond
+runs, and HPRC's Schr&ouml;dinger users list for Prime MM-GBSA. Each is a mail to
+help@hprc.tamu.edu after registering with the authors.</p>
+
+<h2 id="pointing-hope-labs-at-your-copies">Pointing HOPE Labs at your copies</h2>
+<p>HOPE Labs reads a small settings file on your own computer, not on Grace. On macOS and Linux it
+is <code>~/.hope_labs.json</code>; on Windows it is
+<code>%USERPROFILE%\.hope_labs.json</code>.</p>
+<p>Two keys matter. <code>"root"</code> is one folder holding all five installs, and each tool is
+looked for under it with the layout in the table above. <code>"installs"</code> names a tool on
+its own and wins over <code>"root"</code>. Its keys are the tool keys: <code>adcp</code>,
+<code>aptamer</code>, <code>bindcraft</code>, <code>pipelines</code>, <code>hopemd</code>.</p>
+<pre>{
+  "root": "/scratch/user/jane.doe",
+  "installs": {
+    "hopemd": "/scratch/user/jane.doe/HOPE-MD/MD",
+    "bindcraft": "/scratch/group/sflab/BindCraft2"
+  }
+}</pre>
+<p>With neither key set, HOPE Labs uses the lab's group installs under
+<code>/scratch/group/sflab</code>, which is what a lab member wants. The file is read when you sign
+in, so sign out and in again after an edit. HOPE Labs keeps the sign in boxes in the same file and
+leaves what you wrote by hand alone. If the file named any installs, the log lists each tool key
+and its path just after you sign in, so you can see it was read.</p>
+<div class="tip"><b>To try a root without editing the file</b>, set <code>HOPE_LABS_ROOT</code> in
+the environment HOPE Labs is started from. It wins over the file's <code>"root"</code>.</div>
+
+<h2 id="where-runs-go">Where runs go</h2>
+<p>Where a tool writes its runs is a separate question from where it is installed. What each
+repository documents:</p>
+<table>
+<tr><th>Tool</th><th>Runs folder, as its own documentation gives it</th></tr>
+<tr><td>ADCP docking</td><td><code>$SCRATCH/adcp_runs</code></td></tr>
+<tr><td>HOPE-Aptamer</td><td><code>$SCRATCH/hope-aptamer-runs</code></td></tr>
+<tr><td>BindCraft2</td><td>the lab's <code>/scratch/group/sflab/bindcraft_runs/&lt;NetID&gt;</code>; nothing documented for your own copy</td></tr>
+<tr><td>HOPE-pipelines</td><td><code>$SCRATCH/hope/runs</code>, made by <code>my_workspace.sh</code></td></tr>
+<tr><td>HOPE-MD</td><td><code>/scratch/user/&lt;NetID&gt;/hopemd_runs</code></td></tr>
+</table>
+<p>Those are among the folders <a href="results.html">Results</a> looks in, so runs from your own
+copies are listed there too, except a BindCraft2 copy's, whose folder is not documented.</p>
+
+<h2 id="if-something-goes-wrong">If something goes wrong</h2>
+<p>When a tool will not start, its window says why in one sentence, and the sentence names the
+folder it looked in. <a href="troubleshooting.html#starting-a-tool">When something goes wrong</a>
+lists every one, with what to do.</p>

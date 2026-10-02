@@ -78,6 +78,13 @@ def main(argv=None):
             path = os.path.join(hub.WEB, name)
             assert os.path.isfile(path), "the page is missing from the bundle: " + name
         notes.append("page ok")
+        # the docs ride along in web/, so a build that left them behind is caught here too
+        from . import docs
+        missing = docs.audit()
+        assert not missing, "the docs are not whole: " + "; ".join(missing[:3])
+        page = hub.index_page()
+        assert "__CREDIT" not in page and 'class="creditbar"' in page, "the bar along the bottom is missing"
+        notes.append("docs ok, %d pages" % len(docs.SITE.order))
         print("%s\n  %s\nSELFTEST OK" % (credit(), "\n  ".join(notes)))
         return 0
     from .app import main as run

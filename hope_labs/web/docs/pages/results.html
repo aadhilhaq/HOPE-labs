@@ -1,0 +1,40 @@
+<h1>Results</h1>
+<p class="lead">The run folders of all five tools in one list, newest first, each beside the step
+that usually follows it.</p>
+
+<figure>
+<img src="img/results.png" alt="Results: a table of runs from all five tools, with a button to filter by each tool and a next step beside each run">
+<figcaption><b>Results</b>, with runs from every tool. The runs are examples.</figcaption>
+</figure>
+
+<h2 id="what-is-listed">What is listed</h2>
+<p>Results looks in the folders each tool writes its runs to, on Grace, over the connection
+already open, and lists the twelve newest runs in each folder, newest first. A run is listed by
+its folder's name, with the full path under it, the tool that made it, and how long ago the
+folder was last modified.</p>
+<table>
+<tr><th>Tool</th><th>Where its runs are looked for</th></tr>
+<tr><td>ADCP docking</td><td><code>$SCRATCH/adcp_runs</code> and <code>~/adcp_runs</code></td></tr>
+<tr><td>HOPE-Aptamer</td><td><code>$SCRATCH/hope-aptamer-runs</code></td></tr>
+<tr><td>BindCraft2</td><td><code>/scratch/group/sflab/bindcraft_runs/</code> and your NetID</td></tr>
+<tr><td>HOPE-pipelines</td><td><code>$SCRATCH/hope/runs</code> and <code>/scratch/group/sflab/hope_runs</code></td></tr>
+<tr><td>HOPE-MD</td><td><code>/scratch/group/sflab/hopemd_runs</code> and <code>$SCRATCH/hopemd_runs</code></td></tr>
+</table>
+<p>These are where each tool writes when it is not told otherwise, which is how HOPE Labs starts
+them. A run written somewhere else is not listed; open it from its own tool.</p>
+<p><b>Refresh</b> looks again. Otherwise what was read is kept for twenty seconds, so moving
+between the views does not ask Grace each time.</p>
+<p>The buttons along the top show one tool's runs, with the number of its runs beside its name.
+Pick it again, or <b>All tools</b>, to see every run.</p>
+<div class="note"><b>Results lists folders; it does not read them.</b> A folder is listed whether
+the run in it finished, failed or is still going. Open the run in its own tool to see which.</div>
+
+<h2 id="handing-a-run-on">Handing a run on</h2>
+<p>The last column holds the step that usually follows a run of that kind: <b>Simulate these
+poses in HOPE-MD</b> beside a docking run, <b>Dock a hit in ADCP</b> and <b>Simulate a hit in
+HOPE-MD</b> beside a screening run. Pressing one opens the tool that takes the run, in its own
+window, with the run's folder under the bar and a <b>Copy path</b> button beside it: see
+<a href="windows.html#handing-on-a-run">Handing on a run</a>. Paste the path into that tool's
+import box.</p>
+<p>A HOPE-MD run says <b>none</b> there: nothing in the lab's order of work comes after a
+simulation.</p>

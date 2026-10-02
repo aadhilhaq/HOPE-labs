@@ -1,0 +1,56 @@
+<h1>The Tools page</h1>
+<p class="lead">Every tool the lab runs on Grace, a block each, saying what it does, whether it
+is running, and what it hands on.</p>
+
+<figure>
+<img src="img/tools.png" alt="The Tools page with five blocks, two of them running">
+<figcaption><b>The Tools page</b> with ADCP docking and HOPE-MD running. The account in the top
+left is an example.</figcaption>
+</figure>
+
+<h2 id="a-block">A block</h2>
+<figure class="small">
+<img src="img/tool-block.png" alt="The ADCP docking block, running, with Open, Stop and a dashed button to HOPE-MD">
+<figcaption><b>ADCP docking, running.</b> Its state is beside its name, and the buttons along
+the bottom act on it.</figcaption>
+</figure>
+<ul>
+<li><b>The name</b>, and beside it the tool's category, or <b>running</b> while it is up.</li>
+<li><b>One line</b> saying what you would use it for, and under it what it does.</li>
+<li><b>takes</b> and <b>leaves</b>: what another tool can hand it, and what it leaves for the
+next one. HOPE-MD is the one that takes something from the others.</li>
+<li><b>Launch</b>, or <b>Open</b> once the tool is running, and <b>Stop</b> beside it then.</li>
+<li>The dashed buttons, such as <b>&rarr; HOPE-MD</b>: the tool that usually comes next in the
+lab's order of work. Hold the pointer over one to see the step it stands for.</li>
+</ul>
+
+<h2 id="launching-a-tool">Launching a tool</h2>
+<p><b>Launch</b> opens the tool's window straight away. The window starts the tool on the login
+node and shows that it is doing so; the page it then shows is the tool's own. The block says
+<b>running</b> once the tool is up, and the dot beside its name on the left turns green. The page
+reads the tools' state a few seconds after you press Launch, and every fifteen seconds after
+that.</p>
+<div class="note"><b>The window opens inside your click.</b> Chrome lets a page open a window only
+while the click that asked for it is fresh, about five seconds, and starting a tool takes longer
+than that. So the window comes first, and the window starts the tool. If nothing opens at all,
+Chrome blocked it: see <a href="getting-started.html#allow-its-windows">Allow its
+windows</a>.</div>
+<p>A tool has one window. <b>Open</b>, its name on the left, and a dashed button anywhere else
+that leads to it all bring that window forward rather than starting a second copy of the tool.
+See <a href="windows.html#one-window-per-tool">One window per tool</a>.</p>
+
+<h2 id="stopping-a-tool">Stopping a tool</h2>
+<p><b>Stop</b> ends the tool's page server on the login node and closes the port forwarded to it.
+It does not touch anything the tool submitted: queued and running jobs carry on, and their run
+folders stay where they are. Launch the tool again to see them.</p>
+
+<h2 id="finding-a-tool">Finding a tool</h2>
+<p>With five tools the page fits on one screen, and the categories and the search are there for
+when it does not. The count beside the heading says how many blocks are shown, of how many, and
+how many tools are running.</p>
+
+<h2 id="the-rail">The column on the left</h2>
+<p>The dark column on the left is the same in both views. Under <b>The tools</b> it lists every
+tool, with a dot that is green while the tool is running; clicking a name opens its window, as
+<b>Launch</b> or <b>Open</b> would. The note at its foot is the one thing to remember about cost:
+every tool runs under your own account, and the jobs it submits are charged to you.</p>

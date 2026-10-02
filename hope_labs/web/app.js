@@ -204,7 +204,7 @@ function when(seconds) {
   const gap = Date.now() / 1000 - seconds;
   if (gap < 3600) return Math.max(1, Math.round(gap / 60)) + " min ago";
   if (gap < 86400) return Math.round(gap / 3600) + " h ago";
-  if (gap < 86400 * 14) return Math.round(gap / 86400) + " days ago";
+  if (gap < 86400 * 14) { const days = Math.round(gap / 86400); return days + (days === 1 ? " day ago" : " days ago"); }
   return new Date(seconds * 1000).toISOString().slice(0, 10);
 }
 
@@ -261,7 +261,7 @@ async function loadRuns(refresh) {
       b.onclick = () => open_tool(step.to, b, run.path);
       acts.appendChild(b);
     });
-    if (!run.next_steps.length) acts.appendChild(el("span", "why", "—"));
+    if (!run.next_steps.length) acts.appendChild(el("span", "why", "none"));
     last.appendChild(acts);
     tr.appendChild(last);
     tbody.appendChild(tr);
@@ -278,6 +278,10 @@ async function refresh() {
   paintTools();
   paintRail();
 }
+
+// How to cite, in the bar along the bottom, is a page of the docs. It opens in a tab of its own,
+// like Docs beside it, so this page, which holds the session, is not navigated away from.
+if ($("citebar")) { $("citebar").target = "_blank"; $("citebar").rel = "noopener"; }
 
 $("q").addEventListener("input", (e) => { QUERY = e.target.value; paintTools(); });
 $("runrefresh").onclick = () => loadRuns(true);

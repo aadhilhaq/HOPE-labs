@@ -185,8 +185,10 @@ Its keys are the tool keys: `adcp`, `aptamer`, `bindcraft`, `pipelines`, `hopemd
 ```
 
 With neither key set, HOPE Labs uses the lab's group installs under `/scratch/group/sflab`, which is
-what a lab member wants. The file is read when HOPE Labs starts, so restart it after an edit.
-The launcher keeps the sign-in boxes in the same file and leaves what you wrote by hand alone.
+what a lab member wants. The file is read when you sign in, so sign out and in again after an edit.
+The launcher keeps the sign in boxes in the same file and leaves what you wrote by hand alone. To
+try a root without editing the file, set `HOPE_LABS_ROOT` in the environment HOPE Labs is started
+from; it wins over the file's `"root"`.
 
 Where a tool writes its runs is a separate question from where it is installed. What each repository
 documents:
@@ -219,12 +221,17 @@ The [README](../README.md) covers the rest of the page.
 
 ## If something goes wrong
 
-The launcher says what it found. Its own sentences, with the tool named:
+The launcher says what it found. Its own sentences, with the tool named; the built in docs
+(Docs, at the top right of the page) list every one:
 
 * *there is no HOPE-MD on the cluster: /scratch/user/jane.doe/HOPE-MD/MD* means that path does not
   exist. Check that `"root"` plus the layout really spell your folder.
-* *HOPE-Aptamer is installed at /scratch/user/jane.doe/HOPE-aptamer-pipeline but its activate.sh is
-  missing, so its environment cannot be entered.* Run that tool's `install.sh` again, which writes it.
+* *ADCP docking is installed at /scratch/user/jane.doe/ADCP_docking but its activate.sh is missing,
+  so its environment cannot be entered. Running its install.sh again writes it.* The same sentence
+  names HOPE-Aptamer or HOPE-MD when it is theirs.
+* *HOPE-pipelines is installed at /scratch/user/jane.doe/HOPE-pipelines but there is no environment
+  at envs/hope beside it.* Keep the environment and the checkout under the same root, as its
+  `install.sh` does.
 * *HOPE-pipelines was not found in its install at ...*, with the last lines the tool printed. The
   package is not importable there; see the `pip install -e` line above.
 * *the cluster ran ADCP docking with a Python too old to parse it; its environment did not load.*
