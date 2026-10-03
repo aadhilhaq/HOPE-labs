@@ -97,6 +97,33 @@ def residues(text, default_chain):
     return out
 
 
+def split_chains(here, target_in, binder_min, binder_max):
+    """(the binder's chain, [the target's chains]) in a design RFdiffusion wrote.
+
+    Told apart by length against the target that went in, rather than by where they sit in the
+    file. RFdiffusion writes the binder first and the target after it, which is the opposite way
+    round from how it is written in the contig, and a design whose chains are taken the wrong way
+    round does not fail: ProteinMPNN redesigns the target instead, and the run produces a hundred
+    sequences for the protein that was already there.
+    """
+    lengths = {c: len(n) for c, n in here.items()}
+    wanted = sorted(len(n) for n in target_in.values())
+    target, left = [], dict(lengths)
+    for want in wanted:
+        match = next((c for c, n in sorted(left.items()) if n == want), "")
+        if match:
+            target.append(match)
+            left.pop(match)
+    # What is left should be the one diffused chain, and its length should be the length asked
+    # for. Both are checked: a design that is neither is skipped by name rather than guessed at.
+    if len(left) != 1:
+        return "", []
+    binder = next(iter(left))
+    if not (binder_min - 2) <= lengths[binder] <= (binder_max + 2):
+        return "", []
+    return binder, sorted(target)
+
+
 def contig(target_chains, binder_min, binder_max):
     """The contig map: every target chain as it stands, a chain break, then the binder to design.
 
@@ -145,8 +172,17 @@ def main():
     # The example lowers both noise scales to 0 for binder design, which is what makes the designs
     # worth folding. A person who asks for noise gets it on both, as RFdiffusion's own flags are.
     noise = float(plan.get("noise_scale") or 0)
-    args += ["denoiser.noise_scale_ca=%g" % noise, "denoiser.noise_scale_frame=%g" % noise]
-    run(args, where=plan["rfdiffusion"])
+    args += ["denoiser.noise_scale_ca=%g" % noise, "denoiser.noise_scale_frame=%g" % noise,
+             # Hydra writes its log and config under the folder it was invoked in, which is the
+             # shared install; told where to put them, it leaves nothing there.
+             "hydra.run.dir=" + os.path.join(rf_dir, "hydra"),
+             # Two fifty-model trajectory files per design, which nothing downstream reads.
+             "inference.write_trajectory=False"]
+    # The environment's own egg-link resolves rfdiffusion to a personal scratch folder that only
+    # its owner can read, so the group tree is put on the path explicitly. Without this the card
+    # works for one person and fails for everybody else with an ImportError.
+    env = dict(os.environ, PYTHONPATH=plan["rfdiffusion"])
+    run(args, where=plan["rfdiffusion"], env=env)
 
     backbones = sorted(f for f in os.listdir(rf_dir) if f.endswith(".pdb"))
     if not backbones:
@@ -154,17 +190,19 @@ def main():
     say("rfdiffusion: %d backbone(s)" % len(backbones))
 
     # ---- ProteinMPNN: a sequence for the binder, with the target fixed --------------------
-    # RFdiffusion writes the diffused binder as the LAST chain, after the target it kept. That is
-    # the chain to design; the target is what the design is conditioned on and must not change.
+    # Which chain is the binder is not a guess, and it is not the chain order either: RFdiffusion
+    # writes the diffused binder FIRST, as chain A, and the target it kept after it, so taking the
+    # last chain designs the target and fixes the binder. The chains are matched on length against
+    # the target that went in, and what is left over is the binder.
     mpnn = os.path.join(plan["dl_binder_design"], "mpnn_fr", "ProteinMPNN")
     designs = []
     for name in backbones:
         path = os.path.join(rf_dir, name)
         here = chains_of(path)
-        binder = sorted(here)[-1] if here else ""
-        target_chains = [c for c in sorted(here) if c != binder]
+        binder, target_chains = split_chains(here, keep, plan["binder_min"], plan["binder_max"])
         if not binder or not target_chains:
-            say("  %s: skipped, it has %d chain(s)" % (name, len(here)))
+            say("  %s: skipped, cannot tell the binder from the target in %s"
+                % (name, ", ".join("%s:%d" % (c, len(n)) for c, n in sorted(here.items()))))
             continue
         folder = os.path.join(mpnn_dir, os.path.splitext(name)[0])
         if not os.path.isdir(folder):
@@ -176,7 +214,7 @@ def main():
              "--num_seq_per_target", str(plan["seqs_per_backbone"]),
              "--sampling_temp", "0.1",
              "--seed", "37",
-             "--batch_size", "1"], where=mpnn)
+             "--batch_size", "1"], where=mpnn, env=env)
         # ProteinMPNN writes seqs/<name>.fa: the native sequence first, then its designs, each
         # with its score in the header. The best design is the one with the lowest score.
         fasta = os.path.join(folder, "seqs", os.path.splitext(name)[0] + ".fa")
@@ -199,8 +237,13 @@ def main():
                     # one with sample= absent from its header.
                     if "sample=" not in header:
                         continue
-                    if best_score is None or score < best_score:
-                        best, best_score = line.split("/")[-1], score
+                    # The line is the whole complex, chain by chain, separated by "/". The
+                    # binder is taken by its length: its place in the line follows the file's
+                    # chain order, which is not the order anything else here works in.
+                    want = len(here[binder])
+                    part = next((p for p in line.split("/") if len(p) == want), "")
+                    if part and (best_score is None or score < best_score):
+                        best, best_score = part, score
         except OSError:
             say("  %s: ProteinMPNN left no sequences" % name)
             continue

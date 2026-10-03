@@ -35,7 +35,9 @@ AMINO = {
     "GLY": "G", "HIS": "H", "ILE": "I", "LEU": "L", "LYS": "K", "MET": "M", "PHE": "F",
     "PRO": "P", "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V",
 }
-BINDER_CHAIN = "Zz"          # unlikely to collide with a chain in the target file
+#: The chain id asked for in the spec. It is not what comes out: BoltzGen renames the chains of
+#: what it writes, so which chain is the binder is read back from each design rather than assumed.
+BINDER_CHAIN = "Zz"
 
 
 def say(*what):
@@ -148,6 +150,41 @@ def marked(cif):
     return sorted(out)
 
 
+def cif_chains(path):
+    """{chain: residues} of a design BoltzGen wrote, counted from its CA atoms."""
+    found = {}
+    try:
+        with open(path, errors="replace") as fh:
+            for line in fh:
+                if not line.startswith(("ATOM", "HETATM")):
+                    continue
+                bits = line.split()
+                if len(bits) < 8 or bits[3] != "CA":
+                    continue
+                found[bits[6]] = found.get(bits[6], 0) + 1
+    except OSError:
+        return {}
+    return found
+
+
+def split_chains(path, target_len):
+    """(the binder's chain, [the target's chains]) in a design, told apart by length.
+
+    BoltzGen writes the target as it was given and the binder beside it, under ids of its own
+    choosing, so the chain matching the target's length is the target and what is left is the
+    binder. Getting this the wrong way round would hand the simulation a receptor and a partner
+    the wrong way about.
+    """
+    here = cif_chains(path)
+    if not here:
+        return "", []
+    target = [c for c, n in sorted(here.items()) if n == target_len]
+    left = [c for c in sorted(here) if c not in target]
+    if len(left) != 1 or not target:
+        return "", []
+    return left[0], target
+
+
 def main():
     plan = json.load(open(sys.argv[1]))
     out = plan["out"]
@@ -226,28 +263,39 @@ def main():
         # The metrics are the ranking; without them there is nothing to hand on in order.
         raise SystemExit("BoltzGen left no metrics CSV in %s" % ranked)
 
+    # The selected set first: the same design appears under both folders, and the one in
+    # final_30_designs is the re-folded structure the tool recommends.
     structures = {}
-    for folder, _, files in os.walk(ranked):
-        for f in files:
-            if f.endswith(".cif") and os.sep + "before_refolding" not in folder:
-                structures.setdefault(re.sub(r"^rank\d+_", "", f[:-4]), os.path.join(folder, f))
+    for folder in ("final_30_designs", "intermediate_ranked_10_designs"):
+        here = os.path.join(ranked, folder)
+        for f in sorted(os.listdir(here) if os.path.isdir(here) else []):
+            if f.endswith(".cif"):
+                structures.setdefault(re.sub(r"^rank\d+_", "", f[:-4]), os.path.join(here, f))
 
-    designs = []
+    target_len = sum(len(present[c]) for c in keep)
+    designs, dropped = [], []
     for row in rows:
-        name = (row.get("design_name") or row.get("name") or row.get("design") or "").strip()
+        name = (row.get("id") or os.path.splitext(row.get("file_name") or "")[0]).strip()
         seq = (row.get("designed_chain_sequence") or row.get("designed_sequence") or "").strip()
         if not name or not seq:
             continue
-        path = structures.get(name) or structures.get(re.sub(r"\.cif$", "", name))
+        path = structures.get(name)
         if not path:
+            dropped.append((name, "no structure among the ranked designs"))
+            continue
+        binder, target_chains = split_chains(path, target_len)
+        if not binder:
+            dropped.append((name, "cannot tell the binder from the target in the structure"))
             continue
         try:
             rank = int(float(row.get("final_rank") or row.get("secondary_rank") or 1e9))
         except ValueError:
             rank = 10 ** 9
         designs.append({"name": name, "path": path,
-                        "binder_chains": [BINDER_CHAIN], "target_chains": keep,
+                        "binder_chains": [binder], "target_chains": target_chains,
                         "sequence": seq.upper(), "score": rank})
+    for name, why in dropped:
+        say("  %s: %s" % (name, why))
     designs.sort(key=lambda d: d["score"])
     with open(os.path.join(out, "designs.json"), "w") as fh:
         json.dump({"tool": "boltzgen", "designs": designs}, fh, indent=1)

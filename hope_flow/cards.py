@@ -257,9 +257,7 @@ RFDIFFUSION = Card(
         Setting("partition", "Partition", "text", "", optional=True, advanced=True),
         Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ],
-    ready=False,
-    note="Designs come out placed on the target. Not yet startable from a flow: ProteinMPNN's "
-         "half of it is still packed in dl_binder_design.zip.")
+    note="Designs come out placed on the target, so docking them again is optional.")
 
 BOLTZGEN = Card(
     "boltzgen", "BoltzGen", "generate a binder against the target",
