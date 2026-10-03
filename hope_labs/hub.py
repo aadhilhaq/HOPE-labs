@@ -140,6 +140,25 @@ class Hub:
             self.say("tools from the cluster: %s" % got)
         return got
 
+    def use_cluster_words(self):
+        """Take the bar's copyright and credits from the install.
+
+        The bar is written in the launcher rather than in the page, so it did not travel when the
+        page did and a launcher went on stating whatever was true the day it was built. These are
+        words and nothing else: the worst a bad answer can do is read oddly, so anything
+        unreadable simply leaves this launcher's own in place.
+        """
+        from . import docs
+        try:
+            got = docs.adopt(self.flows.site())
+        except Exception as why:                                # noqa: BLE001
+            self.say("the bar on the cluster could not be read (%s); using this launcher's own"
+                     % str(why)[:160])
+            return ""
+        if got:
+            self.say("the bar from the cluster: %s" % got)
+        return got
+
     def use_cluster_page(self, install=""):
         """Serve the lab's current page instead of this launcher's own, where that is possible.
 
@@ -612,6 +631,13 @@ class Flows:
         status, out, err = self._run("tools --compact", timeout=120)
         if status != 0:
             raise RuntimeError(said(out, err) or "the runner would not list the tools")
+        return json.loads(out[out.index("{"):out.rindex("}") + 1])
+
+    def site(self):
+        """What the install's bar says, so a launcher states the current copyright and credits."""
+        status, out, err = self._run("site --compact", timeout=120)
+        if status != 0:
+            raise RuntimeError(said(out, err) or "the runner would not say what its bar reads")
         return json.loads(out[out.index("{"):out.rindex("}") + 1])
 
     def plan(self, doc, runs=""):

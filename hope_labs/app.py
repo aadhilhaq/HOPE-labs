@@ -462,6 +462,7 @@ class App:
                 self.hub.use_cluster_page()
                 self.hub.use_cluster_cards()
                 self.hub.use_cluster_tools()
+                self.hub.use_cluster_words()
             want = clusters.suggested_port(user)
             self.httpd, self.url = hubmod.serve(self.hub, port=want)
             got = self.httpd.server_address[1]

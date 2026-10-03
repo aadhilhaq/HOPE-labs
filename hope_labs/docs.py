@@ -44,11 +44,26 @@ COPYRIGHT = ("Copyright (c) 2026, Sandun Fernando, HOPE Lab, Texas A&M Universit
              "Authored by Aadhil Haq, Samavath Mallawarachchi and Lasan Manujitha. "
              "All rights reserved.")
 
-#: Who does the work, for the bar along the bottom: the one library every session runs through,
-#: the one tool that is not the lab's, and the machine everything runs on.
+#: Who does the work, for the bar along the bottom. Every tool the launcher starts is named with
+#: whoever makes it, and so are the engines inside them: four of the seven tools are not the
+#: lab's, and almost none of the science is. It is long, and the bar rolls it rather than cutting
+#: it off, because the answer to a credit that does not fit is not to drop the credit.
 CREDITS = [
     'SSH by <a href="https://www.paramiko.org/" target="_blank" rel="noopener">Paramiko</a>',
-    "the tools by the HOPE Lab, BindCraft2 by the Pacesa lab",
+    "the pages of ADCP docking, HOPE-Aptamer, HOPE-pipelines and HOPE-MD by the HOPE Lab",
+    'docking by <a href="https://ccsb.scripps.edu/adcp/" target="_blank" rel="noopener">AutoDock'
+    ' CrankPep</a> and ADFRsuite, by Michel Sanner and colleagues, Scripps Research',
+    "docking by AutoDock Vina, by Oleg Trott and Arthur Olson, Scripps Research",
+    'binder design by <a href="https://github.com/PacesaLab/BindCraft2" target="_blank"'
+    ' rel="noopener">BindCraft2</a>, by the Pacesa lab, University of Zurich',
+    'backbones by <a href="https://github.com/RosettaCommons/RFdiffusion" target="_blank"'
+    ' rel="noopener">RFdiffusion</a> and sequences by ProteinMPNN, by the Institute for Protein'
+    ' Design, University of Washington',
+    'binders by <a href="https://github.com/HannesStark/boltzgen" target="_blank"'
+    ' rel="noopener">BoltzGen</a>, by Hannes St&auml;rk and colleagues',
+    "folding by AlphaFold 2 and ColabFold, and by Boltz-2",
+    "simulation by Amber, OpenMM, GROMACS, NAMD or Desmond",
+    "preparation by PDBFixer and pdb2pqr with PROPKA; MM-GBSA by AmberTools or Prime",
     "computing by Texas A&amp;M HPRC",
 ]
 
@@ -92,6 +107,47 @@ def respond(path):
 def creditbar():
     """The bar along the bottom of the launcher's page."""
     return docskit.creditbar_html(SITE, "/docs/index.html", cite_id="citebar")
+
+
+def site():
+    """What the bar says, as data, so an install can tell a launcher built before it.
+
+    The bar is written here rather than in the page, so it did not travel when the page did: a
+    launcher went on stating a copyright and a list of credits from the day it was built. Both
+    change - a tool is added, a holder is restated - and neither is worth a download.
+    """
+    return {"rules": 1, "copyright": COPYRIGHT, "credits": list(CREDITS),
+            "tagline": SITE.tagline, "acknowledge": ACK if "ACK" in globals() else ""}
+
+
+def adopt(doc):
+    """Take the bar's words from an install. Returns what changed, or "".
+
+    Words only. Nothing here decides anything, so there is no rule to be newer than: the worst a
+    bad one can do is read oddly, and anything unreadable leaves this launcher's own in place.
+    """
+    global COPYRIGHT, CREDITS
+    try:
+        if not isinstance(doc, dict):
+            return ""
+        said = str(doc.get("copyright") or "").strip()
+        credits = [str(c) for c in (doc.get("credits") or []) if str(c).strip()]
+        if not said and not credits:
+            return ""
+    except Exception:                                           # noqa: BLE001
+        return ""
+    changed = []
+    if said and said != COPYRIGHT:
+        COPYRIGHT = said
+        SITE.copyright = said
+        changed.append("the copyright")
+    if credits and credits != CREDITS:
+        CREDITS = credits
+        SITE.credits = list(credits)
+        changed.append("%d credits" % len(credits))
+    if doc.get("tagline"):
+        SITE.tagline = str(doc["tagline"])
+    return ", ".join(changed)
 
 
 def audit():

@@ -231,6 +231,20 @@ CREDITBAR_CSS = """
 .creditbar{position:fixed;left:0;right:0;bottom:0;z-index:40;height:28px;line-height:28px;
   padding:0 14px;font-size:11.5px;color:var(--dim);background:var(--card);
   border-top:1px solid var(--line);display:flex;gap:0 6px;align-items:center}
+/* The credits are longer than any bar: every tool and every engine is named, and the answer to a
+   credit that will not fit is not to drop the credit. So when it overflows it rolls, once the
+   page has worked out that it does; until then, and whenever it fits, it sits still and is cut
+   with an ellipsis exactly as it always was. It stops while the pointer is on it, so a name can
+   be read, and it never starts at all for somebody who has asked for less motion. */
+.creditbar .rolling{overflow:hidden;flex:1 1 auto;min-width:0}
+.creditbar .rolling .credittext{display:inline-block;padding-right:3em;
+  animation:creditroll var(--rolltime,60s) linear infinite}
+.creditbar .rolling:hover .credittext,
+.creditbar .rolling:focus-within .credittext{animation-play-state:paused}
+@keyframes creditroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){
+  .creditbar .rolling .credittext{animation:none}
+}
 .creditbar .credittext{min-width:0;flex:1 1 auto;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
 .creditbar .creditlinks{flex:none;white-space:nowrap}
@@ -238,6 +252,35 @@ CREDITBAR_CSS = """
 .creditbar a:hover{color:var(--accent)}
 body{padding-bottom:30px}
 """
+
+
+#: Makes the credits roll, but only when they do not fit. Measured rather than assumed: a short
+#: bar that scrolled anyway would be a fidget, and the same markup serves interfaces whose credits
+#: are two lines long. The text is doubled so the loop has no gap in it, and the speed follows the
+#: length so a long bar is not slower to read through than a short one.
+CREDITROLL = """<script>
+(function () {
+  var bar = document.currentScript.parentNode;
+  var text = bar.querySelector(".credittext");
+  if (!text) return;
+  var said = text.innerHTML;
+  function measure() {
+    var box = text.parentNode.classList.contains("rolling") ? text.parentNode : null;
+    if (box) { box.replaceWith.call(box, text); text.innerHTML = said; }   // back to still
+    text.classList.remove("rolled");
+    if (text.scrollWidth <= text.clientWidth + 2) return;                  // it fits; leave it
+    var roll = document.createElement("span");
+    roll.className = "rolling";
+    text.parentNode.insertBefore(roll, text);
+    roll.appendChild(text);
+    text.innerHTML = said + ' &middot; ' + said;      // doubled, so the loop closes on itself
+    text.style.setProperty("--rolltime", Math.max(30, Math.round(text.scrollWidth / 55)) + "s");
+  }
+  measure();
+  var again;
+  addEventListener("resize", function () { clearTimeout(again); again = setTimeout(measure, 250); });
+})();
+</script>"""
 
 
 def creditbar_html(site, docs_href="/docs/index.html", cite_id=""):
@@ -251,11 +294,13 @@ def creditbar_html(site, docs_href="/docs/index.html", cite_id=""):
         links.append('<a href="%s"%s>How to cite</a>' % (
             html.escape(site.cite_href), (' id="%s"' % html.escape(cite_id)) if cite_id else ""))
     plain = html.unescape(re.sub(r"<[^>]+>", "", " · ".join(parts + links)))
-    return ('<div class="creditbar" role="contentinfo" title="%s">'
-            '<span class="credittext">%s</span>'
-            '<span class="creditlinks">&middot; %s</span></div>'
-            % (html.escape(plain, quote=True), " &middot; ".join(parts),
-               " &middot; ".join(links)))
+    # aria-label carries the credits once, in reading order; the text itself is doubled to make
+    # the roll seamless, and a reader given that twice is being told the same thing twice.
+    return ('<div class="creditbar" role="contentinfo" title="%s" aria-label="%s">'
+            '<span class="credittext" id="credittext" aria-hidden="true">%s</span>'
+            '<span class="creditlinks">&middot; %s</span>%s</div>'
+            % (html.escape(plain, quote=True), html.escape(plain, quote=True),
+               " &middot; ".join(parts), " &middot; ".join(links), CREDITROLL))
 
 
 # --- serving -------------------------------------------------------------------

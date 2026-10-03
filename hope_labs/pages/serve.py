@@ -105,7 +105,9 @@ def index_page():
     return (page.replace("/*__CREDITBAR_CSS__*/", docskit.CREDITBAR_CSS.strip())
                 .replace("<!--__CREDITBAR__-->", S.docs.creditbar())
                 .replace("__APP__", S.docs.app)
-                .replace("__TOOL__", S.tool))
+                .replace("__TOOL__", S.tool)
+                .replace("__MARK__", pagedocs.mark(S.tool))
+                .replace("__FAVICON__", pagedocs.favicon(S.tool)))
 
 
 def inside_roots(path):

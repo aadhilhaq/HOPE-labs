@@ -37,11 +37,18 @@ const byKey = (key) => STATE.tools.find((t) => t.key === key);
 
 /* the mark on each card: one glyph per kind of work, drawn rather than fetched */
 const GLYPH = {
+  _plain: '<rect x="5" y="5" width="14" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>',
   adcp: '<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/>',
   aptamer: '<path d="M7 4 C17 8, 7 16, 17 20 M17 4 C7 8, 17 16, 7 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   bindcraft: '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 12 L12 6 L18 12 L12 18 Z" fill="none" stroke="currentColor" stroke-width="2"/>',
   pipelines: '<path d="M4 7h16 M4 12h10 M4 17h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   hopemd: '<path d="M4 16 L8 7 L12 14 L16 9 L20 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  // A backbone coming out of noise: scattered points on the left settling into a helix on the
+  // right, which is what diffusing a backbone onto a target looks like from a distance.
+  rfdiffusion: '<circle cx="4.5" cy="6" r="1.1" fill="currentColor"/><circle cx="4" cy="12.5" r="1.1" fill="currentColor"/><circle cx="6" cy="18" r="1.1" fill="currentColor"/><path d="M10 18 C16 16, 10 13, 16 11 C10 9, 16 6, 13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  // A binder taking shape against a surface: the target as an arc down one side, the thing being
+  // generated as a closed form beside it.
+  boltzgen: '<path d="M6 3 C2.5 7, 2.5 17, 6 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 7.5 L17.5 10.5 L17.5 16 L12 19 L10 13.5 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
 };
 
 function glyph(key, size) {
@@ -49,7 +56,9 @@ function glyph(key, size) {
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("width", size || 21);
   svg.setAttribute("height", size || 21);
-  svg.innerHTML = GLYPH[key] || GLYPH.hopemd;
+  // A tool with no mark of its own gets a plain one rather than another tool's: borrowing made
+  // two new tools look like the simulation, which reads as a relationship that is not there.
+  svg.innerHTML = GLYPH[key] || GLYPH._plain;
   return svg;
 }
 

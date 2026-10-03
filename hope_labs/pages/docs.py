@@ -75,6 +75,43 @@ class About:
         return [line % version if "%s" in line else line for line in self._credits]
 
 
+#: Each tool's own mark, in the 24-unit box the launcher's canvas draws its cards in, so a tool
+#: looks the same on its card, in the Tools list and at the top of its own page. They were one
+#: shared mark, which made two different tools read as the same one.
+#:
+#: The shapes say what the tool does: RFdiffusion's, points settling out of noise into a helix;
+#: BoltzGen's, a binder taking shape against the arc of a target.
+MARKS = {
+    "rfdiffusion": ('<circle cx="4.5" cy="6" r="1.1" fill="%(a)s"/>'
+                    '<circle cx="4" cy="12.5" r="1.1" fill="%(a)s"/>'
+                    '<circle cx="6" cy="18" r="1.1" fill="%(a)s"/>'
+                    '<path d="M10 18 C16 16, 10 13, 16 11 C10 9, 16 6, 13 5" fill="none" '
+                    'stroke="%(b)s" stroke-width="2" stroke-linecap="round"/>'),
+    "boltzgen": ('<path d="M6 3 C2.5 7, 2.5 17, 6 21" fill="none" stroke="%(a)s" '
+                 'stroke-width="2" stroke-linecap="round"/>'
+                 '<path d="M12 7.5 L17.5 10.5 L17.5 16 L12 19 L10 13.5 Z" fill="none" '
+                 'stroke="%(b)s" stroke-width="2" stroke-linejoin="round"/>'),
+}
+
+
+def mark(tool, teal="var(--teal)", rust="var(--rust)"):
+    """The tool's mark as the body of a 24-unit svg, in the page's two colours."""
+    body = MARKS.get(tool)
+    if not body:
+        return ('<rect x="5" y="5" width="14" height="14" rx="3" fill="none" stroke="%s" '
+                'stroke-width="2"/>' % teal)
+    return body % {"a": teal, "b": rust}
+
+
+def favicon(tool):
+    """The same mark as a data URI, for the tab. The colours are spelled out: a data URI has no
+    stylesheet to read a variable from."""
+    from urllib.parse import quote
+    body = mark(tool, "#0d5c6b", "#c2603a")
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">%s</svg>' % body)
+    return "data:image/svg+xml," + quote(svg, safe="")
+
+
 ABOUT = {
     "rfdiffusion": About(
         app="RFdiffusion on Grace",
