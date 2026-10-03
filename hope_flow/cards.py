@@ -410,10 +410,72 @@ CARDS = (TARGET, PIPELINES, BINDCRAFT, RFDIFFUSION, BOLTZGEN, APTAMER, ADCP, HOP
 BY_KEY = {c.key: c for c in CARDS}
 
 
+#: What the shape of a catalogue means. Raised when a card gains something the rules below have
+#: to understand - a new kind, a new sort of port - not when a card is added or a setting changes.
+#: A launcher reading a catalogue newer than it understands keeps its own rather than guessing.
+RULES = 1
+
+
 def catalogue():
-    """Every card, for the canvas."""
-    return {"kinds": KINDS, "dockable_max_length": DOCKABLE_MAX_LENGTH,
-            "cards": [c.as_json() for c in CARDS]}
+    """Every card, for the canvas, and for a launcher that takes its cards from the cluster."""
+    return {"rules": RULES, "kinds": KINDS, "dockable_max_length": DOCKABLE_MAX_LENGTH,
+            "linker_families": LINKER_FAMILIES, "cards": [c.as_json() for c in CARDS]}
+
+
+def adopt(doc):
+    """Replace the cards with the ones in this catalogue. Returns what was adopted, or "".
+
+    This is what lets a card added on the cluster appear in a launcher built before it. The cards
+    are data - their names, sockets, kinds and settings - while the rules about what may be linked
+    to what are code, and the code stays in the launcher. So a new card, a new setting or a
+    reworded line reaches people without another download, and a change to the rules themselves
+    does not pretend to.
+
+    Anything unreadable leaves the built-in cards exactly as they were.
+    """
+    global CARDS, BY_KEY, KINDS, DOCKABLE_MAX_LENGTH, LINKER_FAMILIES
+    try:
+        if not isinstance(doc, dict) or not doc.get("cards"):
+            return ""
+        if int(doc.get("rules", 1)) > RULES:
+            return ""                      # written for rules this launcher does not have
+        made = [_card_from(c) for c in doc["cards"]]
+        if not made or not any(c.key == "target" for c in made):
+            return ""                      # no target card: not a catalogue worth having
+    except Exception:                                           # noqa: BLE001
+        return ""
+    CARDS = tuple(made)
+    BY_KEY = {c.key: c for c in CARDS}
+    if isinstance(doc.get("kinds"), dict) and doc["kinds"]:
+        KINDS = dict(doc["kinds"])
+    if isinstance(doc.get("linker_families"), dict) and doc["linker_families"]:
+        LINKER_FAMILIES = dict(doc["linker_families"])
+    try:
+        DOCKABLE_MAX_LENGTH = int(doc.get("dockable_max_length") or DOCKABLE_MAX_LENGTH)
+    except (TypeError, ValueError):
+        pass
+    return "%d cards" % len(CARDS)
+
+
+def _card_from(d):
+    return Card(d["key"], d.get("name") or d["key"], d.get("tagline", ""),
+                tool=d.get("tool", ""), note=d.get("note", ""), ready=bool(d.get("ready", True)),
+                inputs=[_port_from(p) for p in d.get("inputs", [])],
+                outputs=[_port_from(p) for p in d.get("outputs", [])],
+                settings=[_setting_from(x) for x in d.get("settings", [])])
+
+
+def _port_from(d):
+    return Port(d["key"], d.get("label") or d["key"], d.get("kinds") or [],
+                required=bool(d.get("required", True)), many=bool(d.get("many")),
+                sized=bool(d.get("sized")))
+
+
+def _setting_from(d):
+    return Setting(d["key"], d.get("label") or d["key"], d.get("kind", "text"),
+                   default=d.get("default"), choices=d.get("choices") or (),
+                   why=d.get("why", ""), optional=bool(d.get("optional")),
+                   needed=bool(d.get("needed")), advanced=bool(d.get("advanced")))
 
 
 def link_refused(from_card, from_port, to_card, to_port, settings=None):

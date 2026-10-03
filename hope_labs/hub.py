@@ -101,6 +101,28 @@ class Hub:
         self.page_note = ""
         self._runs_cache = (0.0, [])
 
+    def use_cluster_cards(self):
+        """Take the cards from the install, so a card added there appears here.
+
+        The cards are data; the rules about what may be linked to what stay in this launcher. So a
+        new card reaches somebody who has not downloaded this in months, and a change to the rules
+        themselves does not pretend to - the catalogue says which rules it was written for, and one
+        written for newer rules is left alone.
+        """
+        from hope_flow import cards
+        try:
+            got = cards.adopt(self.flows.catalogue())
+        except Exception as why:                                # noqa: BLE001
+            self.say("the cards on the cluster could not be read (%s); using this launcher's own"
+                     % str(why)[:160])
+            return ""
+        if got:
+            self.say("cards from the cluster: %s" % got)
+        else:
+            self.say("the cards on the cluster are newer than this launcher understands; "
+                     "using its own. Download the current release for the rest.")
+        return got
+
     def use_cluster_page(self, install=""):
         """Serve the lab's current page instead of this launcher's own, where that is possible.
 
@@ -567,6 +589,13 @@ class Flows:
             raise RuntimeError("the flow could not be written to the cluster: %s"
                                % (err or out).strip()[:300])
         return path
+
+    def catalogue(self):
+        """The cards the install offers, so one added there reaches a launcher built before it."""
+        status, out, err = self._run("catalogue --compact", timeout=120)
+        if status != 0:
+            raise RuntimeError(said(out, err) or "the runner would not list its cards")
+        return json.loads(out[out.index("{"):out.rindex("}") + 1])
 
     def plan(self, doc, runs=""):
         """What this flow would do, worked out on the cluster, where the tools actually are."""

@@ -74,6 +74,14 @@ def cmd_plan(a):
     return 1 if got["problems"] else 0
 
 
+def cmd_catalogue(a):
+    """The cards this install offers, as JSON. A launcher reads this so that a card added here
+    reaches it without anybody downloading the launcher again."""
+    from . import cards
+    print(json.dumps(cards.catalogue(), indent=2 if not a.compact else None))
+    return 0
+
+
 def cmd_status(a):
     flow = _read(os.path.join(a.flowdir, "flow.json"))
     record = st.State.read(a.flowdir)
@@ -152,6 +160,10 @@ def main(argv=None):
     n.add_argument("--partition", default="")
     n.add_argument("--json", action="store_true")
     n.set_defaults(fn=cmd_plan)
+
+    g = sub.add_parser("catalogue", help="the cards this install offers, as JSON")
+    g.add_argument("--compact", action="store_true")
+    g.set_defaults(fn=cmd_catalogue)
 
     t = sub.add_parser("status", help="how far a flow has got")
     t.add_argument("flowdir")

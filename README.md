@@ -72,8 +72,15 @@ keeps its own and says so in a line, rather than serving a page whose buttons ca
 not have. Untick *Take the page from the cluster* to pin the launcher to the page it was built
 with.
 
-So: changes to the page — a view, a card's settings, the wording of a refusal — need no new
-download. Changes to the server behind it do, and announce themselves.
+The cards travel the same way, and for the same reason. `hope-flow catalogue` is what an install
+offers — the cards, their sockets, their settings — and the launcher adopts it, so a card added on
+the cluster appears in a launcher built months before it. The cards are **data**; the rules about
+what may be linked to what are **code**, and the code stays in the launcher. A catalogue says
+which rules it was written for, and one written for rules the launcher lacks is left alone rather
+than half-read.
+
+So: a new card, a new setting, a new view, a reworded refusal — none of these needs a new
+download. A change to the rules themselves, or to the server behind the page, does, and says so.
 
 **Sign out** closes the pages and the connection. Anything already queued on the cluster carries
 on without it: the launcher submits work, it does not hold it.

@@ -92,5 +92,43 @@ class NoFile(FakeSFTP):
 
 check(hub._page_version(NoFile(""), "/where") == (None, ""),
       "a folder that is not an install says so rather than guessing")
+# --- the cards, which travel the same way the page does ----------------------
+# A card added on the cluster must reach a launcher built before it, or every new tool means
+# everybody downloading the programme again. The cards are data and travel; the rules about what
+# may be linked to what are code and stay here.
+import copy                                                                # noqa: E402
+import json                                                                # noqa: E402
+
+from hope_flow import cards                                                # noqa: E402
+
+_built_in = copy.deepcopy(cards.catalogue())
+check(_built_in.get("rules") == cards.RULES, "a catalogue says which rules it was written for")
+check(json.loads(json.dumps(_built_in)) == _built_in, "and is plain JSON, which is how it travels")
+
+_newer = copy.deepcopy(_built_in)
+_newer["cards"].append({
+    "key": "later", "name": "A Later Tool", "tagline": "added after this launcher was built",
+    "tool": "later", "ready": True, "note": "",
+    "inputs": [{"key": "target", "label": "target", "kinds": ["target"]}],
+    "outputs": [{"key": "complexes", "label": "its designs", "kinds": ["complexes"]}],
+    "settings": [{"key": "howmany", "label": "How many", "kind": "number", "default": 5}]})
+check(cards.adopt(_newer), "a catalogue with a card this launcher has never seen is adopted")
+check("later" in cards.BY_KEY, "and the card is there")
+check(cards.link_refused("later", "complexes", "hopemd", "structures") == "",
+      "the built-in rules judge the new card's links")
+check(cards.link_refused("later", "complexes", "adcp", "sequences") != "",
+      "including refusing the ones that make no sense")
+
+_future = copy.deepcopy(_built_in)
+_future["rules"] = cards.RULES + 7
+check(cards.adopt(_future) == "",
+      "a catalogue written for rules this launcher lacks is left alone rather than half-read")
+for _rubbish in ({}, {"cards": []}, "not a catalogue", None,
+                 {"cards": [{"key": "x"}]}):      # no target card
+    check(cards.adopt(_rubbish) == "", "rubbish is refused: %r" % (_rubbish,))
+check(cards.adopt(_built_in), "and the built-in catalogue can always be adopted back")
+check(sorted(c.key for c in cards.CARDS) == sorted(c["key"] for c in _built_in["cards"]),
+      "leaving the cards as they started")
+
 print("\n%s" % ("ALL PASSED" if not fails else "%d FAILED" % len(fails)))
 sys.exit(1 if fails else 0)
