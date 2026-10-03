@@ -116,10 +116,60 @@ got = subprocess.run(["bash", "-c", line.replace("exec python", 'echo "ROOT=$HL_
 check("ROOT=%s\n" % os.path.realpath(root) in got.stdout,
       "the monitor's root is not the folder holding the install: %r" % got.stdout[-300:])
 
+# --- the tools travel too ----------------------------------------------------
+# A tool installed on the cluster must be startable by a launcher built before it existed, or
+# every new tool means everybody downloading the programme again. What travels is what a tool is
+# and the line that starts it; how it says it is ready stays here, by name.
+import copy as _copy                                                       # noqa: E402
+import json as _json                                                       # noqa: E402
+
+_doc = tools.catalogue()
+_before = {t.key: (t.command(install="/inst", runs="/runs", port=8899),
+                   t.command(install="/inst", runs="", port=8899))
+           for t in tools.TOOLS if not t.flow_only}
+check(_json.loads(_json.dumps(_doc)) == _doc, "a tools catalogue is plain JSON, which is how it travels")
+check(tools.adopt(_copy.deepcopy(_doc)), "and a launcher adopts it")
+_after = {t.key: (t.command(install="/inst", runs="/runs", port=8899),
+                  t.command(install="/inst", runs="", port=8899))
+          for t in tools.TOOLS if not t.flow_only}
+check(_before == _after,
+      "a start line changed in the round trip: %s"
+      % [k for k in _before if _before.get(k) != _after.get(k)])
+
+# a tool this launcher has never heard of, naming a reader it does have
+_newer = _copy.deepcopy(_doc)
+_newer["tools"].append({
+    "key": "later", "name": "A Later Tool", "tagline": "installed after this launcher was built",
+    "category": "Design", "install": "/scratch/group/sflab/Later", "ready": "url",
+    "needs_port": False, "flow_only": False, "runs": ["$SCRATCH/later_runs"],
+    "start": {"plain": "cd __HOPELABS_INSTALL__ && exec ./serve --port __HOPELABS_PORT__",
+              "with_runs": "cd __HOPELABS_INSTALL__ && exec ./serve --port __HOPELABS_PORT__ "
+                           "--runs __HOPELABS_RUNS__"}})
+check(tools.adopt(_newer), "a catalogue with a tool this launcher has never seen is adopted")
+_one = tools.BY_KEY.get("later")
+check(_one is not None and not _one.flow_only, "and it is a tool that can be started")
+check(_one.command(install="/scratch/group/sflab/Later", runs="/r", port=9001)
+      == "cd /scratch/group/sflab/Later && exec ./serve --port 9001 --runs /r",
+      "its start line is filled in: %s" % (_one and _one.command(install="/i", runs="/r", port=9001)))
+check(_one.ready is tools.READERS["url"], "and it reads its ready line the way it asked to")
+
+# one naming a reader this launcher does not have is listed, not started
+_odd = _copy.deepcopy(_doc)
+_odd["tools"][0] = dict(_odd["tools"][0], key="strange", ready="a_reader_from_the_future")
+check(tools.adopt(_odd), "a tool naming an unknown reader does not spoil the catalogue")
+check(tools.BY_KEY["strange"].flow_only,
+      "and that tool is listed without a Launch that could only fail")
+
+_future = _copy.deepcopy(_doc); _future["rules"] = tools.RULES + 5
+check(tools.adopt(_future) == "", "a catalogue written for newer rules is left alone")
+for _rubbish in ({}, {"tools": []}, "nonsense", None):
+    check(tools.adopt(_rubbish) == "", "rubbish is refused: %r" % (_rubbish,))
+check(tools.adopt(_doc), "and the built-in catalogue can be adopted back")
+
 shutil.rmtree(work, ignore_errors=True)
 if fails:
     print("FAIL %d of %d" % (len(fails), ran))
     for f in fails:
         print("  - " + f)
     sys.exit(1)
-print("ok  %d checks: every start line names what is missing" % ran)
+print("ok  %d checks: the start lines, and that they travel" % ran)

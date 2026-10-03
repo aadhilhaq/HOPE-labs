@@ -67,6 +67,20 @@ def remote_path(path):
     return shlex.quote(path)
 
 
+#: Markers a rendered start line carries in place of the three things the launcher fills in.
+#: Replaced by hand rather than by a format string: a start line is shell, and shell is full of
+#: characters a format string would try to read.
+WHERE = "__HOPELABS_INSTALL__"
+RUNSMARK = "__HOPELABS_RUNS__"
+PORT = 999999                        # a number, because the lines format the port as one
+PORTMARK = "__HOPELABS_PORT__"
+
+#: What the shape of a tools catalogue means. Raised when a tool gains something a launcher has
+#: to understand to start it, not when a tool is added or its words change. A launcher reading a
+#: catalogue newer than it understands keeps its own.
+RULES = 1
+
+
 def _url_ready(text, asked_port):
     """(port, token) once one of the three prints its URL line."""
     found = URL_LINE.search(text)
@@ -86,6 +100,12 @@ def _monitor_ready(text, asked_port):
         return None
     found = MONITOR_TOKEN.search(text)
     return asked_port, (found.group(1) if found else "")
+
+
+def _register(name, fn):
+    fn._reader_name = name
+    READERS[name] = fn
+    return fn
 
 
 class Tool:
@@ -116,12 +136,96 @@ class Tool:
     def command(self, install="", runs="", port=0):
         return self._start(remote_path(install or self.install), runs, port)
 
+    def lines(self):
+        """The two start lines as text, with the port left to be filled in.
+
+        A tool added to the lab's install has to be startable by a launcher built before it
+        existed, and a launcher cannot be sent a function. So the line is rendered twice - with a
+        runs folder and without - against a marker standing in for the port, and the launcher puts
+        its own port in. Two renderings rather than a template with conditions in it: the
+        conditions already live in the start lines, and a second language for expressing them is
+        a second thing to get wrong.
+        """
+        if self.flow_only:
+            # A tool with no page has no line to render, and asking for one raises on purpose.
+            return {}
+
+        def rendered(runs):
+            line = self._start(WHERE, runs, PORT)
+            if str(PORT) not in line and self.needs_port:
+                raise ValueError("%s's start line does not use the port it is given" % self.key)
+            return line.replace(str(PORT), PORTMARK)
+
+        return {"plain": rendered(""), "with_runs": rendered(RUNSMARK)}
+
     def as_json(self):
         return {"key": self.key, "name": self.name, "tagline": self.tagline, "blurb": self.blurb,
                 "category": self.category, "install": self.install,
                 "next_steps": [{"to": to, "label": label} for to, label in self.next_steps],
                 "takes": self.takes, "gives": self.gives, "page": self.page,
-                "flow_only": self.flow_only}
+                "flow_only": self.flow_only, "needs_port": self.needs_port,
+                "runs": list(self.runs), "ready": _ready_name(self.ready),
+                "start": self.lines()}
+
+
+#: How a tool says it is up. These are the readers a launcher has; a tool whose install names one
+#: this launcher does not have is listed but not started, which is the honest half of the job.
+READERS = {}
+
+
+def _ready_name(fn):
+    return getattr(fn, "_reader_name", "") or getattr(fn, "__name__", "").lstrip("_")
+
+
+def catalogue():
+    """Every tool, as data, for a launcher that takes its tools from the lab's install."""
+    return {"rules": RULES, "tools": [t.as_json() for t in TOOLS]}
+
+
+def adopt(doc):
+    """Replace the tools with the ones in this catalogue. Returns what was adopted, or "".
+
+    This is what lets a tool installed on the cluster appear in a launcher built before it. What
+    travels is the description and the line that starts it; how a tool says it is ready stays
+    here, by name, because that is a reader rather than a string. A tool naming a reader this
+    launcher does not have is listed and not started, with its tile saying so, rather than being
+    hidden or started wrongly.
+    """
+    global TOOLS, BY_KEY
+    try:
+        if not isinstance(doc, dict) or not doc.get("tools"):
+            return ""
+        if int(doc.get("rules", 1)) > RULES:
+            return ""
+        made = [_tool_from(t) for t in doc["tools"]]
+        if not made:
+            return ""
+    except Exception:                                           # noqa: BLE001
+        return ""
+    TOOLS = tuple(made)
+    BY_KEY = {t.key: t for t in TOOLS}
+    return "%d tools" % len(TOOLS)
+
+
+def _tool_from(d):
+    lines = d.get("start") or {}
+    reader = READERS.get(d.get("ready") or "", _never)
+
+    def start(install, runs, port):
+        text = lines.get("with_runs" if runs else "plain") or lines.get("plain") or ""
+        if not text:
+            raise RuntimeError("%s did not say how it is started" % d.get("name", d.get("key")))
+        return (text.replace(WHERE, install)
+                    .replace(RUNSMARK, remote_path(runs) if runs else "")
+                    .replace(PORTMARK, str(int(port))))
+
+    return Tool(d["key"], d.get("name") or d["key"], d.get("tagline", ""),
+                d.get("category", "Design"), d.get("install", ""), start, reader,
+                blurb=d.get("blurb", ""), needs_port=bool(d.get("needs_port")),
+                runs=d.get("runs") or (), takes=d.get("takes", ""), gives=d.get("gives", ""),
+                page=d.get("page", "/"),
+                flow_only=bool(d.get("flow_only")) or reader is _never,
+                next_steps=[(n["to"], n["label"]) for n in d.get("next_steps") or []])
 
 
 # --- the lines that start each tool ----------------------------------------
@@ -201,6 +305,11 @@ def _no_page(where, runs, port):
 
 def _never(text, asked_port):
     return None
+
+
+for _name, _fn in (("url", _url_ready), ("aptamer", _aptamer_ready),
+                   ("monitor", _monitor_ready), ("never", _never)):
+    _register(_name, _fn)
 
 
 TOOLS = (

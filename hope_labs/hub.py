@@ -123,6 +123,23 @@ class Hub:
                      "using its own. Download the current release for the rest.")
         return got
 
+    def use_cluster_tools(self):
+        """Take the tool list from the install, so a tool added there appears here.
+
+        The same split as the cards: what a tool is and the line that starts it travel; how it
+        says it is ready stays in this launcher, by name. A tool whose install names a reader this
+        launcher does not have is listed and not started, rather than hidden or started wrongly.
+        """
+        try:
+            got = catalogue.adopt(self.flows.tools())
+        except Exception as why:                                # noqa: BLE001
+            self.say("the tools on the cluster could not be read (%s); using this launcher's own"
+                     % str(why)[:160])
+            return ""
+        if got:
+            self.say("tools from the cluster: %s" % got)
+        return got
+
     def use_cluster_page(self, install=""):
         """Serve the lab's current page instead of this launcher's own, where that is possible.
 
@@ -595,6 +612,13 @@ class Flows:
         status, out, err = self._run("catalogue --compact", timeout=120)
         if status != 0:
             raise RuntimeError(said(out, err) or "the runner would not list its cards")
+        return json.loads(out[out.index("{"):out.rindex("}") + 1])
+
+    def tools(self):
+        """The tools the install offers, so one added there is listed here."""
+        status, out, err = self._run("tools --compact", timeout=120)
+        if status != 0:
+            raise RuntimeError(said(out, err) or "the runner would not list the tools")
         return json.loads(out[out.index("{"):out.rindex("}") + 1])
 
     def plan(self, doc, runs=""):

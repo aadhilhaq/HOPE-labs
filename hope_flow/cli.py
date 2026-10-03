@@ -82,6 +82,17 @@ def cmd_catalogue(a):
     return 0
 
 
+def cmd_tools(a):
+    """The tools this install offers, as JSON, so a launcher can list one added after it was built."""
+    try:
+        from hope_labs import tools
+    except ImportError as why:
+        print("the tools catalogue is not here: %s" % why, file=sys.stderr)
+        return 2
+    print(json.dumps(tools.catalogue(), indent=2 if not a.compact else None))
+    return 0
+
+
 def cmd_status(a):
     flow = _read(os.path.join(a.flowdir, "flow.json"))
     record = st.State.read(a.flowdir)
@@ -160,6 +171,10 @@ def main(argv=None):
     n.add_argument("--partition", default="")
     n.add_argument("--json", action="store_true")
     n.set_defaults(fn=cmd_plan)
+
+    w = sub.add_parser("tools", help="the tools this install offers, as JSON")
+    w.add_argument("--compact", action="store_true")
+    w.set_defaults(fn=cmd_tools)
 
     g = sub.add_parser("catalogue", help="the cards this install offers, as JSON")
     g.add_argument("--compact", action="store_true")
