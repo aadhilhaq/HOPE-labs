@@ -50,6 +50,30 @@ def cmd_submit(a):
     return 0
 
 
+def cmd_plan(a):
+    """What the flow would do, before anything is queued."""
+    flow = _read(a.flow)
+    got = run.plan(flow, a.runs or DEFAULT_RUNS, a.account, a.partition)
+    if a.json:
+        print(json.dumps(got, indent=2))
+        return 1 if got["problems"] else 0
+    print("%s would run as:\n" % got["name"])
+    for row in got["cards"]:
+        after = (" after " + ", ".join(row["waits_for"])) if row["waits_for"] else ""
+        print("  %s%s" % (row["name"], after))
+        print("     queues  %s" % row["queues"])
+        if row["scale"]:
+            print("     scale   %s" % row["scale"])
+        print("     lands   %s" % row["lands_in"])
+    for note in got["notes"]:
+        print("\n  note: %s" % note)
+    if got["problems"]:
+        print("\nthis flow cannot be queued yet:")
+        for line in got["problems"]:
+            print("  - %s" % line)
+    return 1 if got["problems"] else 0
+
+
 def cmd_status(a):
     flow = _read(os.path.join(a.flowdir, "flow.json"))
     record = st.State.read(a.flowdir)
@@ -111,6 +135,14 @@ def main(argv=None):
     s.add_argument("--python", default="", help="the Python the step jobs use")
     s.add_argument("--package-root", default="", help="the HOPE-flow checkout they import from")
     s.set_defaults(fn=cmd_submit)
+
+    n = sub.add_parser("plan", help="what a flow would do, queueing nothing")
+    n.add_argument("flow")
+    n.add_argument("--runs", default="")
+    n.add_argument("--account", default="")
+    n.add_argument("--partition", default="")
+    n.add_argument("--json", action="store_true")
+    n.set_defaults(fn=cmd_plan)
 
     t = sub.add_parser("status", help="how far a flow has got")
     t.add_argument("flowdir")

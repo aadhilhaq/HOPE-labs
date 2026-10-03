@@ -21,8 +21,8 @@ def built(binder=(70, 100), links=("t>p", "t>b", "t>a", "p>a", "b>m", "a>m")):
     nodes = [{"id": "t", "card": "target", "settings": {
                   "source": "rcsb", "pdb_id": "5O45", "chains": "A", "hotspots": "54,56,66-70",
                   "binder_min": binder[0], "binder_max": binder[1]}},
-             {"id": "p", "card": "pipelines"}, {"id": "b", "card": "bindcraft"},
-             {"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd"}]
+             {"id": "p", "card": "pipelines", "settings": {"pipeline": cards.PIPELINE_LABELS[0]}}, {"id": "b", "card": "bindcraft", "settings": {"designs": 10}},
+             {"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd", "settings": {"top_n": 10, "engine": "amber", "length_ns": 50}}]
     port = {"t>p": ("t", "target", "p", "target"), "t>b": ("t", "target", "b", "target"),
             "t>a": ("t", "target", "a", "target"), "p>a": ("p", "sequences", "a", "sequences"),
             "b>a": ("b", "sequences", "a", "sequences"), "b>m": ("b", "complexes", "m", "structures"),
@@ -65,12 +65,12 @@ ok(built(binder=(18, 24), links=("t>p", "t>b", "t>a", "b>a", "b>m", "a>m")).chec
 
 # what is missing
 ok(any("target" in b for b in flow.Flow.from_json(
-    {"name": "x", "nodes": [{"id": "m", "card": "hopemd"}], "edges": []}).check()),
+    {"name": "x", "nodes": [{"id": "m", "card": "hopemd", "settings": {"top_n": 10, "engine": "amber", "length_ns": 50}}], "edges": []}).check()),
    "a flow with no target is refused")
 ok(any("wait on each other" in b for b in flow.Flow.from_json(
     {"name": "x", "nodes": [{"id": "t", "card": "target", "settings": {
          "source": "rcsb", "pdb_id": "5O45", "hotspots": "54", "binder_min": 8, "binder_max": 20}},
-      {"id": "a", "card": "adcp"}, {"id": "p", "card": "pipelines"}],
+      {"id": "a", "card": "adcp"}, {"id": "p", "card": "pipelines", "settings": {"pipeline": cards.PIPELINE_LABELS[0]}}],
      "edges": [{"from": "t", "fromPort": "target", "to": "a", "toPort": "target"},
                {"from": "a", "fromPort": "poses", "to": "p", "toPort": "target"},
                {"from": "p", "fromPort": "sequences", "to": "a", "toPort": "sequences"}]}).check()),

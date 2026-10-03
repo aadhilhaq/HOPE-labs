@@ -191,6 +191,7 @@ class Flow:
             if not n.kind.ready:
                 bad.append("%s cannot be started by a flow yet%s"
                            % (n.kind.name, (": " + n.kind.note) if n.kind.note else ""))
+            bad.extend(_unanswered(n))
 
         try:
             self.order()
@@ -200,6 +201,34 @@ class Flow:
         if targets:
             bad.extend(_target_problems(targets[0].settings))
         return bad
+
+
+def _unanswered(node):
+    """The settings this card will not start without, that nobody has filled in.
+
+    A default is not an answer for these: they are the few where a wrong value costs a day of a
+    cluster and the right one is nobody's to guess. The canvas shows the default in the box, so
+    all a person has to do is agree with it - but they have to agree with it.
+    """
+    bad = []
+    for field in node.kind.settings:
+        if not field.needed:
+            continue
+        value = node.settings.get(field.key)
+        if value in (None, ""):
+            bad.append("%s needs %s" % (node.kind.name, field.label.lower()))
+            continue
+        if field.kind == "number":
+            try:
+                if float(value) <= 0:
+                    bad.append("%s: %s should be more than nothing"
+                               % (node.kind.name, field.label.lower()))
+            except (TypeError, ValueError):
+                bad.append("%s: %s should be a number" % (node.kind.name, field.label.lower()))
+        elif field.choices and str(value) not in field.choices:
+            bad.append("%s: %r is not one of the choices for %s"
+                       % (node.kind.name, value, field.label.lower()))
+    return bad
 
 
 def _target_problems(s):

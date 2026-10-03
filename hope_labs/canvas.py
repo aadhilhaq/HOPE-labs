@@ -64,7 +64,9 @@ def example():
 
     It is a whole flow rather than a shape to fill in - a real PDB id and real hotspots - because
     a person starting from an example is finding out what the canvas does, and a flow that will
-    not launch until six boxes are filled teaches them nothing. The peptides go to the docking and
+    not launch until six boxes are filled teaches them nothing. The settings a flow will not start
+    without are filled in with modest numbers rather than ambitious ones, since this is the flow
+    somebody will press Launch on first. The peptides go to the docking and
     the designs do not: BindCraft2's binders are as long as the target card asks for, which is
     longer than the docking takes, and the designs arrive placed on the target already.
     """
@@ -72,10 +74,13 @@ def example():
         flow.Node("target", "target", {
             "source": "rcsb", "pdb_id": "5O45", "chains": "A", "path": "",
             "hotspots": "54,56,66-70", "binder_min": 70, "binder_max": 100}, at=(16, 146)),
-        flow.Node("pipelines", "pipelines", at=(252, 16)),
-        flow.Node("bindcraft", "bindcraft", at=(252, 286)),
+        flow.Node("pipelines", "pipelines", {"pipeline": cards.PIPELINE_LABELS[0]}, at=(252, 16)),
+        flow.Node("bindcraft", "bindcraft", {"designs": 10}, at=(252, 286)),
         flow.Node("adcp", "adcp", at=(488, 16)),
-        flow.Node("hopemd", "hopemd", at=(724, 160)),
+        # Modest on purpose: an example a person presses Launch on should not be the one that
+        # commits a week of a card. The numbers are theirs to raise once they have read the plan.
+        flow.Node("hopemd", "hopemd", {"top_n": 5, "engine": "amber", "length_ns": 50,
+                                       "replicates": 3}, at=(724, 160)),
     ], edges=[
         flow.Edge("target", "target", "pipelines", "target"),
         flow.Edge("target", "target", "bindcraft", "target"),
@@ -87,11 +92,19 @@ def example():
     return doc.as_json()
 
 
-def launch(doc):
-    """Queue this flow on the cluster. Nothing does that yet.
+def launch(flows, doc, runs=""):
+    """Queue this flow on the cluster, through the connection the launcher already holds.
 
-    The canvas is finished before the runner is, so Launch has somewhere to go and says plainly
-    why it cannot go there. When HOPE-flow's runner is installed this hands the flow to it; what
-    the page does with a refusal does not change.
+    What is checked here is checked again by the runner before anything is queued: this page is
+    not the authority on whether a flow can run, and a flow can reach the cluster as a file
+    without ever passing through here.
     """
-    raise RuntimeError(RUNNER_MISSING)
+    bad = flow.Flow.from_json(doc or {}).check()
+    if bad:
+        raise RuntimeError("this flow cannot be queued yet: " + "; ".join(bad))
+    return flows.launch(doc, runs)
+
+
+def plan(flows, doc, runs=""):
+    """What this flow would do, worked out on the cluster, before anything is queued."""
+    return flows.plan(doc, runs)

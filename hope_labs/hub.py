@@ -14,6 +14,7 @@ import mimetypes
 import os
 import re
 import secrets
+import shlex
 import socket
 import sys
 import threading
@@ -92,7 +93,22 @@ class Hub:
         self.token = secrets.token_urlsafe(12)
         self.lock = threading.Lock()
         self.starting = {}                # key -> the lock held while that tool starts
+        self._scratch = ""                # the person's scratch on the cluster, asked for once
+        self.flows = Flows(self)          # queueing flows, and reading back how they are getting on
         self._runs_cache = (0.0, [])
+
+    @property
+    def scratch(self):
+        """The person's scratch folder on the cluster.
+
+        Asked for once and kept: it is the same for the whole session, and the clusters the lab
+        uses have home quotas small enough that writing anything there is a mistake.
+        """
+        if not self._scratch:
+            status, out, _ = tunnel.run(self.t, 'echo "${SCRATCH:-}"', timeout=30)
+            got = (out or "").strip().splitlines()
+            self._scratch = got[-1].strip() if status == 0 and got and got[-1].strip() else "/tmp"
+        return self._scratch
 
     # ---- starting and stopping ------------------------------------------
     def free_remote_port(self):
@@ -378,8 +394,18 @@ def handler_for(hub):
                     return self._json({"flows": settings.flow_save(body.get("flow") or {})})
                 if url.path == "/api/flow/delete":
                     return self._json({"flows": settings.flow_delete(body.get("name", ""))})
+                # The plan is what a person reads before committing a cluster allocation: what
+                # each card will queue, where it lands, and the numbers that decide what it costs.
+                if url.path == "/api/flow/plan":
+                    return self._json(canvas.plan(hub.flows, body.get("flow") or {},
+                                                  body.get("runs", "")))
                 if url.path == "/api/flow/launch":
-                    return self._json(canvas.launch(body.get("flow") or {}))
+                    return self._json(canvas.launch(hub.flows, body.get("flow") or {},
+                                                    body.get("runs", "")))
+                if url.path == "/api/flow/status":
+                    return self._json(hub.flows.status(body.get("folder", "")))
+                if url.path == "/api/flow/stop":
+                    return self._json(hub.flows.stop(body.get("folder", "")))
             except Exception as exc:                            # noqa: BLE001
                 return self._json({"error": str(exc)}, 400)
             self._send(404, "text/plain", b"not found")
@@ -414,3 +440,113 @@ def serve(hub, port=0, host="127.0.0.1", tries=8):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     bound = httpd.server_address[1]
     return httpd, "http://127.0.0.1:%d/?t=%s" % (bound, hub.token)
+
+
+# --- flows -----------------------------------------------------------------------------------
+# A flow is queued on the cluster and runs there. The launcher's part is to put the drawing where
+# the cluster can read it and to ask the runner to start it; after that, nothing of the launcher
+# is involved, and closing it leaves the flow running.
+
+FLOW_INSTALL = "/scratch/group/sflab/HOPE-labs"
+
+
+#: Pythons to try for the runner, in order. A login node's own python3 is 3.6 on this cluster,
+#: which cannot read the runner at all, so one is looked for rather than assumed; the lab's
+#: HOPE-MD environment is the one every member already has.
+FLOW_PYTHONS = ("/scratch/group/sflab/HOPE-MD/env/bin/python3", "python3.12", "python3.11",
+                "python3.10", "python3.9", "python3")
+
+
+def flow_command(install, args, root=""):
+    """The line that runs the flow runner on the login node, in a given checkout.
+
+    The runner needs Python 3.8 or newer. Rather than name one and fail on a cluster that keeps
+    it somewhere else, the line tries each candidate and takes the first that is new enough, so
+    the failure a person sees is about their flow rather than about an interpreter.
+    """
+    where = catalogue.rebase(install or FLOW_INSTALL, root)
+    tries = " ".join(shlex.quote(p) for p in FLOW_PYTHONS)
+    return ('cd %s || exit 1; PY=""; '
+            'for C in "${HOPEFLOW_PYTHON:-}" %s; do '
+            '[ -n "$C" ] || continue; '
+            'command -v "$C" >/dev/null 2>&1 || continue; '
+            '"$C" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" '
+            '>/dev/null 2>&1 || continue; PY="$C"; break; done; '
+            '[ -n "$PY" ] || { echo "no Python of 3.8 or newer was found for the flow runner" >&2; '
+            'exit 3; }; '
+            'PYTHONPATH=%s exec "$PY" -m hope_flow.cli %s'
+            % (shlex.quote(where), tries, shlex.quote(where), args))
+
+
+class Flows:
+    """Queueing flows on the cluster, and reading back how they are getting on."""
+
+    def __init__(self, hub):
+        self.hub = hub
+
+    def _run(self, args, timeout=180):
+        install = self.hub.installs.get("flow") or FLOW_INSTALL
+        line = flow_command(install, args, self.hub.installs.get("_root", ""))
+        return tunnel.run(self.hub.t, line, timeout=timeout)
+
+    def _put(self, doc, name):
+        """Write the drawing where the cluster can read it, and give back its path.
+
+        It goes beside the flow's own folders rather than into a home directory: the clusters the
+        lab uses have small home quotas, and a flow is scratch work.
+        """
+        where = "%s/.hope_flows" % (self.hub.scratch or "/tmp")
+        path = "%s/%s.json" % (where, re.sub(r"[^A-Za-z0-9_.-]", "_", name or "flow"))
+        text = json.dumps(doc, indent=2)
+        status, out, err = tunnel.run(
+            self.hub.t, "mkdir -p %s && cat > %s <<'HOPEFLOWEOF'\n%s\nHOPEFLOWEOF"
+            % (shlex.quote(where), shlex.quote(path), text), timeout=60)
+        if status != 0:
+            raise RuntimeError("the flow could not be written to the cluster: %s"
+                               % (err or out).strip()[:300])
+        return path
+
+    def plan(self, doc, runs=""):
+        """What this flow would do, worked out on the cluster, where the tools actually are."""
+        path = self._put(doc, doc.get("name"))
+        args = "plan %s --json" % shlex.quote(path)
+        if runs:
+            args += " --runs " + shlex.quote(runs)
+        status, out, err = self._run(args)
+        try:
+            return json.loads(out[out.index("{"):out.rindex("}") + 1])
+        except (ValueError, IndexError):
+            raise RuntimeError("the runner did not answer with a plan: %s"
+                               % ((err or out).strip()[:400] or "it said nothing"))
+
+    def launch(self, doc, runs=""):
+        """Queue the flow. Returns where it is and what is waiting on what."""
+        path = self._put(doc, doc.get("name"))
+        args = "submit " + shlex.quote(path)
+        if runs:
+            args += " --runs " + shlex.quote(runs)
+        status, out, err = self._run(args, timeout=600)
+        if status != 0:
+            raise RuntimeError((err or out).strip()[:600] or "the runner refused the flow")
+        lines = [l.strip() for l in (out or "").splitlines() if l.strip()]
+        folder = next((l for l in lines if l.startswith("/")), "")
+        if not folder:
+            raise RuntimeError("the runner queued something but did not say where: %s"
+                               % " ".join(lines)[:300])
+        self.hub.say("flow %s queued in %s" % (doc.get("name") or "", folder))
+        return {"folder": folder, "log": lines}
+
+    def status(self, folder):
+        """How far a flow has got, read from the record its own jobs keep."""
+        status, out, err = self._run("status %s --json" % shlex.quote(folder))
+        try:
+            return json.loads(out[out.index("{"):out.rindex("}") + 1])
+        except (ValueError, IndexError):
+            raise RuntimeError("that flow's record could not be read: %s"
+                               % ((err or out).strip()[:300] or "it said nothing"))
+
+    def stop(self, folder):
+        status, out, err = self._run("stop %s" % shlex.quote(folder))
+        if status != 0:
+            raise RuntimeError((err or out).strip()[:300] or "the flow could not be stopped")
+        return {"stopped": (out or "").strip()}

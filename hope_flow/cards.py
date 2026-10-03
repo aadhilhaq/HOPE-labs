@@ -21,6 +21,17 @@ KINDS = {
     "trajectories": "simulated complexes, with their binding energies",
 }
 
+#: The pipelines' own names for their four pipelines, verbatim from hope_core.pipelines: the
+#: double space before the bracket is theirs, and the label is matched on, so it is copied rather
+#: than tidied.
+PIPELINE_LABELS = (
+    "dimer loop  (400 dipeptides, grown over rounds)",
+    "dimer  (400 dipeptides, single pass)",
+    "trimer  (8,000 tripeptides, single pass)",
+    "trimer loop  (8,000 tripeptides, grown over rounds)",
+    "tetramer  (160,000 tetrapeptides, single pass)",
+)
+
 #: The longest peptide ADCP will take (adcp_dock/peptide.py, MAX_LENGTH). A design longer than
 #: this cannot be docked, so an edge carrying sequences into docking is refused when the binder
 #: length being asked for is above it. The number lives here as well because the canvas has to
@@ -90,7 +101,8 @@ class Card:
 class Setting:
     """A field on a card. `kind` is how the canvas draws it, not how it is stored."""
 
-    def __init__(self, key, label, kind, default=None, choices=(), why="", optional=False):
+    def __init__(self, key, label, kind, default=None, choices=(), why="", optional=False,
+                 needed=False):
         self.key = key
         self.label = label
         self.kind = kind                # text | number | choice | residues | yesno | path
@@ -98,10 +110,16 @@ class Setting:
         self.choices = tuple(choices)
         self.why = why                  # the line under the field
         self.optional = optional
+        #: A setting the flow will not start without. A default is not an answer here: these are
+        #: the few where a wrong value is expensive and the right one is nobody's to guess, so a
+        #: person says what they mean before anything is queued rather than finding out from a
+        #: run that did the wrong thing for a day.
+        self.needed = needed
 
     def as_json(self):
         return {"key": self.key, "label": self.label, "kind": self.kind, "default": self.default,
-                "choices": list(self.choices), "why": self.why, "optional": self.optional}
+                "choices": list(self.choices), "why": self.why, "optional": self.optional,
+                "needed": self.needed}
 
 
 # --- the cards -------------------------------------------------------------------------------
@@ -133,6 +151,17 @@ PIPELINES = Card(
     tool="pipelines",
     inputs=[Port("target", "target", ["target"])],
     outputs=[Port("sequences", "designed peptides", ["sequences"])],
+    settings=[
+        # Which pipeline is the whole shape of the run - how big a library, and whether it is
+        # grown over rounds - so it is asked for rather than defaulted into.
+        Setting("pipeline", "Pipeline", "choice", PIPELINE_LABELS[0], choices=PIPELINE_LABELS,
+                why="how large a library, and whether it is grown over rounds", needed=True),
+        Setting("rounds", "Rounds", "number", 3, optional=True,
+                why="only for a pipeline that grows its library"),
+        Setting("n_constructs", "Constructs to carry forward", "number", 25, optional=True),
+        Setting("n_mmgbsa", "Of those, how many to score with MM-GBSA", "number", 10, optional=True,
+                why="the slow step: each one is minutes on a large receptor"),
+    ],
     note="Peptides, short enough to dock.")
 
 BINDCRAFT = Card(
@@ -144,6 +173,14 @@ BINDCRAFT = Card(
     # instead be docked, but only where the binder is short enough for the docking to take it.
     outputs=[Port("complexes", "designed complexes", ["complexes"]),
              Port("sequences", "design sequences", ["sequences"], sized=True)],
+    settings=[
+        Setting("designs", "Stop when this many designs pass", "number", 10, needed=True,
+                why="a campaign runs until it has this many, or until its walltime ends"),
+        Setting("gpu", "Card", "choice", "auto",
+                choices=["auto", "a100", "a40", "rtx"], optional=True),
+        Setting("walltime", "Walltime", "text", "24:00:00", optional=True,
+                why="a campaign that runs out carries on when it is queued again"),
+    ],
     note="Designs come out already placed on the target, so docking them again is optional.")
 
 APTAMER = Card(
@@ -163,6 +200,13 @@ ADCP = Card(
     inputs=[Port("target", "target", ["target"]),
             Port("sequences", "peptides to dock", ["sequences"], many=True)],
     outputs=[Port("poses", "docked poses", ["poses"])],
+    settings=[
+        Setting("poses", "Poses to keep per peptide", "number", 10, optional=True),
+        Setting("replicas", "Replicas", "number", 50, optional=True,
+                why="how many independent searches per peptide"),
+        Setting("mmgbsa", "Score the best poses with MM-GBSA", "yesno", True, optional=True,
+                why="slower, and the more considered estimate of binding"),
+    ],
     note="Takes peptides of %d residues or fewer." % DOCKABLE_MAX_LENGTH)
 
 HOPEMD = Card(
@@ -171,7 +215,23 @@ HOPEMD = Card(
     # One port taking either kind, and as many edges as there are branches: this is where the
     # tracks of a flow meet, and one batch of simulations comes out of all of them.
     inputs=[Port("structures", "poses or complexes", ["poses", "complexes"], many=True)],
-    outputs=[Port("trajectories", "trajectories", ["trajectories"])])
+    outputs=[Port("trajectories", "trajectories", ["trajectories"])],
+    settings=[
+        # How many to simulate is the one setting that decides what a flow costs, so it is asked
+        # for. Everything arriving here is already ranked by the tool that made it; this takes
+        # that many from the top of each track.
+        Setting("top_n", "Simulate the best of what arrives", "number", 10, needed=True,
+                why="per track. Each one is a full simulation, so this is what the flow costs"),
+        Setting("engine", "Engine", "choice", "amber",
+                choices=["amber", "openmm", "gromacs", "namd", "desmond"], needed=True),
+        Setting("length_ns", "Length, ns", "number", 100, needed=True,
+                why="production, per replicate"),
+        Setting("frames", "Frames to keep", "number", 500, optional=True,
+                why="over the whole production; the interval between them follows from this"),
+        Setting("replicates", "Replicates", "number", 3, optional=True,
+                why="independent repeats, each with its own seed"),
+        Setting("mmgbsa", "Binding energy by MM-GBSA", "yesno", True, optional=True),
+    ])
 
 CARDS = (TARGET, PIPELINES, BINDCRAFT, APTAMER, ADCP, HOPEMD)
 BY_KEY = {c.key: c for c in CARDS}

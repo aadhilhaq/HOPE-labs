@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import time
 
-from . import adapters, drivers, queue, state as st
+from . import adapters, cards, drivers, queue, state as st
 from .flow import Flow
 
 
@@ -211,3 +211,112 @@ def step(where, node_id, say=print):
             say("could not queue %s: %s" % (edge.dst, why))
     record.write()
     return "queued"
+
+
+def plan(flow, runs_root, account="", partition=""):
+    """What this flow would do, worked out without doing any of it.
+
+    A person pressing Launch is committing a cluster allocation, sometimes for days, and until now
+    they were doing it blind. This says what will be queued, in what order, where it will land and
+    what drives the cost, so the press is a decision rather than a leap.
+
+    The numbers here are counts and arithmetic, not predictions. An hour figure would have to come
+    from a built system, which does not exist until the flow has run; inventing one would be worse
+    than giving none, so what is given is what is known: how many of what.
+    """
+    where = folder_for(flow, runs_root)
+    rows, notes = [], []
+    target = next((n for n in flow.nodes if n.card == "target"), None)
+    settings = target.settings if target else {}
+
+    for node in flow.order():
+        card = node.kind
+        waits = [flow.node(u).kind.name for u in flow.upstream(node.id)]
+        row = {"id": node.id, "card": node.card, "name": card.name,
+               "waits_for": waits, "queues": "", "lands_in": "", "scale": ""}
+        if node.card == "target":
+            row["queues"] = "nothing: fetched here, before anything is queued"
+            row["lands_in"] = os.path.join(where, "inputs")
+            row["scale"] = _target_line(settings)
+        else:
+            row["lands_in"] = os.path.join(
+                os.path.abspath(os.path.expandvars(os.path.expanduser(
+                    node.settings.get("runs") or drivers.RUNS.get(node.card, "")))),
+                "%s_%s" % (flow.name, node.id))
+            row["queues"], row["scale"] = _card_scale(node, settings)
+        rows.append(row)
+        notes.extend(_card_notes(node, settings, flow))
+
+    return {"name": flow.name, "folder": where, "cards": rows, "notes": notes,
+            "account": account, "partition": partition,
+            "problems": flow.check()}
+
+
+def _target_line(s):
+    where = ("PDB " + (s.get("pdb_id") or "?")) if (s.get("source") or "rcsb") == "rcsb" \
+        else os.path.basename(s.get("path") or "?")
+    return "%s, chains %s, hotspots %s" % (where, s.get("chains") or "all",
+                                           s.get("hotspots") or "none")
+
+
+def _card_scale(node, target_settings):
+    """(what this card queues, the numbers that decide what it costs)."""
+    s = node.settings
+    if node.card == "pipelines":
+        return ("one design job, and a co-folding job behind it when it is asked for",
+                "%s%s" % (s.get("pipeline") or "the default pipeline",
+                          ", %s rounds" % s["rounds"] if s.get("rounds") else ""))
+    if node.card == "bindcraft":
+        return ("one campaign on %s, up to %s" % (s.get("gpu") or "auto",
+                                                  s.get("walltime") or "24:00:00"),
+                "until %s designs pass, binders of %s-%s residues"
+                % (s.get("designs") or "?", target_settings.get("binder_min"),
+                   target_settings.get("binder_max")))
+    if node.card == "adcp":
+        return ("three jobs: prepare, dock as an array over the peptides, then gather",
+                "%s replicas a peptide, %s poses kept%s"
+                % (s.get("replicas") or 50, s.get("poses") or 10,
+                   ", then MM-GBSA" if s.get("mmgbsa", True) else ""))
+    if node.card == "hopemd":
+        runs = int(_int(s.get("top_n"), 10))
+        reps = int(_int(s.get("replicates"), 3))
+        ns = _int(s.get("length_ns"), 100)
+        return ("up to %d run%s per track, each of about five jobs"
+                % (runs, "" if runs == 1 else "s"),
+                "%d x %d replicate%s x %g ns = %g ns a track, on %s"
+                % (runs, reps, "" if reps == 1 else "s", ns, runs * reps * ns,
+                   s.get("engine") or "amber"))
+    return ("one job", "")
+
+
+def _int(value, fallback):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _card_notes(node, target_settings, flow):
+    """What a person should know about this card before pressing Launch."""
+    out = []
+    if node.card == "hopemd":
+        runs = int(_int(node.settings.get("top_n"), 10))
+        reps = int(_int(node.settings.get("replicates"), 3))
+        # The best of each track, not the best overall: two tracks arriving means twice the runs,
+        # which is the single easiest way for a flow to cost twice what was intended.
+        tracks = max(1, len(flow.into(node.id)))
+        total = runs * tracks * reps * _int(node.settings.get("length_ns"), 100)
+        if tracks > 1:
+            out.append("%d tracks arrive at the simulation and the best %d of each is taken, so up "
+                       "to %d runs rather than %d." % (tracks, runs, runs * tracks, runs))
+        if total >= 3000:
+            out.append("That is %g ns in all. A nanosecond of a middling system is minutes on one "
+                       "card, so this is a long commitment: check the number before starting it."
+                       % total)
+    if node.card == "bindcraft":
+        longest = _int(target_settings.get("binder_max"), 0)
+        if longest and longest > cards.DOCKABLE_MAX_LENGTH and \
+                any(e.dst_port == "sequences" for e in flow.out_of(node.id)):
+            out.append("Designs of up to %g residues cannot be docked; that link is refused."
+                       % longest)
+    return out

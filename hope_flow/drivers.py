@@ -344,16 +344,18 @@ def _hopemd(node, flow, carried, flow_dir, record, say=print):
     os.makedirs(root, exist_ok=True)
     rundirs, jobs = [], []
 
+    top = _top_n(s)
     for got in arriving:
         if got["kind"] == "poses":
-            specs = [({"system": {"source": {"kind": got["source_kind"], "path": got["path"]}},
-                       "compute": {"engine": s.get("engine") or "amber"}}, got["selections"], "")]
+            # What arrives is already in the order the tool that made it ranked, so the best of
+            # it is the front of it.
+            picks = (got["selections"] or [])[:top]
+            specs = [(_spec(s, {"kind": got["source_kind"], "path": got["path"]}), picks, "")]
         else:
-            specs = [({"system": {"source": {"kind": "complex", "path": d["path"]},
-                                  "receptor_chains": d["receptor_chains"],
-                                  "partner_chains": d["partner_chains"]},
-                       "compute": {"engine": s.get("engine") or "amber"}},
-                      None, "%s_%s" % (flow.name, d["name"])) for d in got.get("designs", [])]
+            specs = [(_spec(s, {"kind": "complex", "path": d["path"]},
+                            d["receptor_chains"], d["partner_chains"]),
+                      None, "%s_%s" % (flow.name, d["name"]))
+                     for d in (got.get("designs") or [])[:top]]
         for spec, picks, name in specs:
             where, ids = _hopemd_one(flow_dir, node.id, spec, picks, name, root, say)
             rundirs.extend(where)
@@ -361,6 +363,49 @@ def _hopemd(node, flow, carried, flow_dir, record, say=print):
     if not jobs:
         raise NotWired("the simulation queued nothing")
     return (rundirs[0] if len(rundirs) == 1 else root), jobs
+
+
+def _top_n(s):
+    """How many of what arrives to simulate. Everything arriving is already ranked."""
+    try:
+        return max(1, int(s.get("top_n") or 10))
+    except (TypeError, ValueError):
+        return 10
+
+
+def _spec(s, source, receptor_chains=None, partner_chains=None):
+    """The card's settings as the simulation's own spec.
+
+    The engine belongs to the force field rather than to the compute settings - putting it in the
+    wrong place is silently ignored and the run comes out on the default engine - and the number
+    of frames is written as the interval between them, which is what the spec holds.
+    """
+    system = {"source": source}
+    if receptor_chains:
+        system["receptor_chains"] = receptor_chains
+    if partner_chains:
+        system["partner_chains"] = partner_chains
+
+    ns = _number(s.get("length_ns"), 100.0)
+    protocol = {"length_ns": ns, "replicates": int(_number(s.get("replicates"), 3))}
+    frames = _number(s.get("frames"), 0)
+    if frames and frames > 0:
+        # The spec keeps how often a frame is written, not how many there are; a person thinks in
+        # frames. One is the other over the length of the run.
+        protocol["save_ps"] = max(0.1, round(ns * 1000.0 / frames, 3))
+
+    spec = {"system": system,
+            "forcefield": {"engine": s.get("engine") or "amber"},
+            "protocol": protocol,
+            "analysis": {"mmgbsa": bool(s.get("mmgbsa", True))}}
+    return spec
+
+
+def _number(value, fallback):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 def _hopemd_one(flow_dir, nid, spec, picks, name, root, say):

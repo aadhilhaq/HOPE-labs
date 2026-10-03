@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from hope_flow import adapters, drivers, queue, run, state as st                   # noqa: E402
+from hope_flow import cards, adapters, drivers, queue, run, state as st                   # noqa: E402
 from hope_flow.flow import Flow                                                    # noqa: E402
 
 fails = []
@@ -94,8 +94,8 @@ def a_flow():
     nodes = [{"id": "t", "card": "target", "settings": {
                   "source": "file", "path": __file__, "hotspots": "54,56",
                   "binder_min": 8, "binder_max": 20}},
-             {"id": "p", "card": "pipelines"}, {"id": "b", "card": "bindcraft"},
-             {"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd"}]
+             {"id": "p", "card": "pipelines", "settings": {"pipeline": cards.PIPELINE_LABELS[0]}}, {"id": "b", "card": "bindcraft", "settings": {"designs": 10}},
+             {"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd", "settings": {"top_n": 10, "engine": "amber", "length_ns": 50}}]
     edges = [("t", "target", "p", "target"), ("t", "target", "b", "target"),
              ("t", "target", "a", "target"), ("p", "sequences", "a", "sequences"),
              ("b", "complexes", "m", "structures"), ("a", "poses", "m", "structures")]

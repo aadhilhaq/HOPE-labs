@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from hope_flow import adapters                                            # noqa: E402
+from hope_flow import adapters, cards                                            # noqa: E402
 from hope_flow.flow import Flow                                           # noqa: E402
 from hope_flow import state as st                                         # noqa: E402
 
@@ -65,7 +65,7 @@ def carried(flow, rundirs, edge_at):
 if not PIPELINES_RUN:
     skip("pipelines to docking", "no finished design run on this cluster")
 else:
-    flow = a_flow(([{"id": "p", "card": "pipelines"}, {"id": "a", "card": "adcp"}],
+    flow = a_flow(([{"id": "p", "card": "pipelines", "settings": {"pipeline": cards.PIPELINE_LABELS[0]}}, {"id": "a", "card": "adcp"}],
                    [("t", "target", "p", "target"), ("t", "target", "a", "target"),
                     ("p", "sequences", "a", "sequences")]))
     got = carried(flow, {"p": PIPELINES_RUN}, 2)
@@ -85,7 +85,7 @@ else:
 if not ADCP_RUN:
     skip("docking to simulation", "no finished docking run on this cluster")
 else:
-    flow = a_flow(([{"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd"}],
+    flow = a_flow(([{"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd", "settings": {"top_n": 10, "engine": "amber", "length_ns": 50}}],
                    [("t", "target", "a", "target"), ("a", "poses", "m", "structures")]))
     got = carried(flow, {"a": ADCP_RUN}, 1)
     ok(got["kind"] == "poses" and got["source_kind"] == "adcp",
@@ -101,7 +101,7 @@ else:
 if not BINDCRAFT_RUN:
     skip("designs to simulation", "no campaign on this cluster")
 else:
-    flow = a_flow(([{"id": "b", "card": "bindcraft"}, {"id": "m", "card": "hopemd"}],
+    flow = a_flow(([{"id": "b", "card": "bindcraft", "settings": {"designs": 10}}, {"id": "m", "card": "hopemd", "settings": {"top_n": 10, "engine": "amber", "length_ns": 50}}],
                    [("t", "target", "b", "target"), ("b", "complexes", "m", "structures")]))
     try:
         got = carried(flow, {"b": BINDCRAFT_RUN}, 1)
@@ -122,7 +122,7 @@ else:
         skip("designs to simulation", str(why)[:80])
 
     # the length gate: the campaign's own request is enough to refuse the whole branch
-    flow = a_flow(([{"id": "b", "card": "bindcraft"}, {"id": "a", "card": "adcp"}],
+    flow = a_flow(([{"id": "b", "card": "bindcraft", "settings": {"designs": 10}}, {"id": "a", "card": "adcp"}],
                    [("t", "target", "b", "target"), ("t", "target", "a", "target"),
                     ("b", "sequences", "a", "sequences")]), binder=(70, 100))
     try:

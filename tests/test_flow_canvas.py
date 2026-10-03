@@ -43,8 +43,12 @@ def flow_with(binder_max, links):
     nodes = [{"id": "t", "card": "target", "settings": {
                   "source": "rcsb", "pdb_id": "5O45", "chains": "A", "hotspots": "54,56,66-70",
                   "binder_min": 18, "binder_max": binder_max}},
-             {"id": "p", "card": "pipelines"}, {"id": "b", "card": "bindcraft"},
-             {"id": "a", "card": "adcp"}, {"id": "m", "card": "hopemd"}]
+             {"id": "p", "card": "pipelines",
+              "settings": {"pipeline": cards.PIPELINE_LABELS[0]}},
+             {"id": "b", "card": "bindcraft", "settings": {"designs": 10}},
+             {"id": "a", "card": "adcp"},
+             {"id": "m", "card": "hopemd",
+              "settings": {"top_n": 5, "engine": "amber", "length_ns": 50}}]
     port = {"t>p": ("t", "target", "p", "target"), "t>b": ("t", "target", "b", "target"),
             "t>a": ("t", "target", "a", "target"), "p>a": ("p", "sequences", "a", "sequences"),
             "b>a": ("b", "sequences", "a", "sequences"),
@@ -165,10 +169,15 @@ try:
     check(body.get("problems") == [], "the example served to the canvas does not validate: %s"
           % body.get("problems"))
 
-    # Launch has nowhere to go yet, and says so in one sentence
-    code, body = ask("/api/flow/launch" + tok, {"flow": example})
-    check(body.get("error") == canvas.RUNNER_MISSING,
-          "/api/flow/launch answered %s %s, not the runner's absence" % (code, body))
+    # Launch goes to the cluster now. There is no connection in a test, so what is checked is
+    # that a flow which cannot run is refused here, before anything is asked of the cluster at all.
+    unanswered = flow_with(24, ("t>p", "t>b", "t>a", "p>a", "b>m", "a>m"))
+    for node in unanswered["nodes"]:
+        if node["id"] == "m":
+            node["settings"] = dict(node["settings"], engine="")
+    code, body = ask("/api/flow/launch" + tok, {"flow": unanswered})
+    check(code == 400 and "cannot be queued" in (body.get("error") or ""),
+          "/api/flow/launch should refuse a flow with nothing at the end: %s %s" % (code, body))
 
     # a flow is named, kept and reopened, in the settings file on this computer
     code, body = ask("/api/flow/saved" + tok)
