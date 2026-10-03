@@ -8,10 +8,27 @@
    so a drag can colour the sockets without a round trip for each one, and a refusal reads here in
    the words the catalogue gives it rather than in a second set of our own.
 
-   It shares api(), flash(), el() and $() with app.js, which is loaded before it. */
+   The view is one of three stages at a time. The canvas is where a flow is drawn; the plan is what
+   the cluster says the flow would do, read before anything is queued; the run view is the same
+   cards standing where they were drawn, coloured by what has become of each. They are stages
+   rather than tabs because they follow one another: a plan is read on the way to queueing a flow,
+   and once the flow is queued there is nothing to go back to a plan for.
+
+   It shares api(), flash(), el(), $(), when(), byKey() and open_tool() with app.js, which is
+   loaded before it. */
 "use strict";
 
 const CANVAS_MIN = [1180, 660];     // the drawing is this big at least, and the box scrolls
+
+/* The three states a card does not come back from without somebody asking it to. The runner's own
+   words are used for all seven, here and on the page: somebody reading squeue beside this should
+   find one vocabulary rather than two. */
+const ENDED = ["done", "failed", "stopped"];
+
+/* How often a flow that is still going is read again. A flow is hours to days long, so this costs
+   the login node next to nothing, and it is quick enough that a card going from queued to running
+   is seen rather than waited for. */
+const RUN_EVERY = 20000;
 
 let CAT = null;                     // the catalogue, read once
 let FLOW = blankFlow();             // exactly the document flow.py reads and writes
@@ -21,8 +38,14 @@ let CHECKED = false;                // whether the launcher has answered about t
 let PICKED = "";                    // the node whose settings the panel shows
 let WIRE = null;                    // the link being drawn, while one is
 let SAVED = [];                     // the flows kept on this computer
+let QUEUED = [];                    // the flows queued from this computer, newest first
+let STAGE = "draw";                 // draw | plan | run
+let PLAN = null;                    // what the cluster says this flow would do, while it is shown
+let WATCHING = null;                // {folder, flow, status, read, why} of the flow being watched
 let checkSeq = 0;
 let checkTimer = 0;
+let planSeq = 0;
+let runTimer = 0;
 
 function blankFlow() { return { version: 1, name: "", runs_root: "", nodes: [], edges: [] }; }
 
@@ -101,15 +124,30 @@ function dropCard(id) {
   check();
 }
 
-function openFlow(doc) {
-  FLOW = {
-    version: 1, name: doc.name || "", runs_root: doc.runs_root || "",
-    nodes: (doc.nodes || []).map((n) => ({ id: n.id, card: n.card,
-                                           settings: Object.assign({}, n.settings),
-                                           at: [(n.at || [24, 24])[0] || 0, (n.at || [24, 24])[1] || 0] })),
-    edges: (doc.edges || []).map((e) => ({ from: e.from, fromPort: e.fromPort,
-                                           to: e.to, toPort: e.toPort })),
+/* Where a card sits. A flow this page drew says so; one written by hand, or queued from a file on
+   the cluster, need not, and a card with nowhere to be would stop the drawing dead. Those are laid
+   out as the palette lays out a card it has just been given. */
+function spot(at, i) {
+  if (!at || at.length < 2) return [24 + (i % 4) * 252, 24 + Math.floor(i / 4) * 176];
+  return [Math.max(0, Math.round(at[0] || 0)), Math.max(0, Math.round(at[1] || 0))];
+}
+
+/* A flow document with nothing missing from it that the drawing needs. Both the canvas and the run
+   view take flows out of the settings file, so both come through here rather than one of them
+   trusting what it was given. */
+function asDrawn(doc) {
+  return {
+    version: 1, name: (doc || {}).name || "", runs_root: (doc || {}).runs_root || "",
+    nodes: ((doc || {}).nodes || []).map((n, i) => ({ id: n.id, card: n.card,
+                                                      settings: Object.assign({}, n.settings),
+                                                      at: spot(n.at, i) })),
+    edges: ((doc || {}).edges || []).map((e) => ({ from: e.from, fromPort: e.fromPort,
+                                                   to: e.to, toPort: e.toPort })),
   };
+}
+
+function openFlow(doc) {
+  FLOW = asDrawn(doc);
   $("flowname").value = FLOW.name;
   // the target first: it is the card a person reopening a flow is coming back to
   PICKED = ((FLOW.nodes.find((n) => n.card === "target") || FLOW.nodes[0] || {}).id) || "";
@@ -144,17 +182,33 @@ function refusedEdge(e) {
 }
 
 /* ------------------------------------------------------------------ the drawing */
-function paint() {
-  const box = $("canvas");
+/* Drawn twice: on the canvas, where a flow is put together, and in the run view, where the same
+   cards stand where they were put and say what has become of them. One builder rather than two,
+   because two would part company the first time a card grew a socket, and the whole point of the
+   run view is that it is the drawing a person recognises.
+
+   `rows` is the status answer's cards while a flow is being watched and null while one is being
+   drawn, and everything that edits the drawing hangs off its being null. */
+function drawFlow(box, svg, doc, rows) {
   Array.prototype.slice.call(box.querySelectorAll(".node")).forEach((n) => n.remove());
-  FLOW.nodes.forEach((node) => box.appendChild(nodeBox(node)));
-  sizeCanvas();
-  paintWires();
+  (doc.nodes || []).forEach((node) => {
+    box.appendChild(nodeBox(node, rows ? rowFor(rows, node.id) : null));
+  });
+  sizeBox(box, doc);
+  wiresInto(svg, box, doc, rows);
+}
+
+function rowFor(rows, id) {
+  return (rows || []).find((r) => r.id === id) || { id: id, state: "waiting", jobs: [] };
+}
+
+function paint() {
+  drawFlow($("canvas"), $("wires"), FLOW, null);
   paintPanel();
   paintProblems();
 }
 
-function socket(node, port, side) {
+function socket(node, port, side, live) {
   const s = el("button", "sock");
   s.setAttribute("data-" + side, port.key);
   // the dot on the card's edge, then the label; the output column turns the pair round, so the
@@ -169,6 +223,7 @@ function socket(node, port, side) {
   s.dataset.tip = "carries " + (port.kinds || []).map((k) => CAT.kinds[k]).join("; or ")
                 + (port.many ? ". Several links may arrive here." : "");
   s.title = s.dataset.tip;
+  if (!live) return s;                // a watched card's sockets are read, not rewired
   if (side === "out") {
     s.addEventListener("pointerdown", (e) => startWire(e, node, port));
   } else {
@@ -178,9 +233,10 @@ function socket(node, port, side) {
   return s;
 }
 
-function nodeBox(node) {
+function nodeBox(node, run) {
   const card = cardOf(node.card);
-  const box = el("div", "node" + (PICKED === node.id ? " on" : ""));
+  const state = run ? (run.state || "waiting") : "";
+  const box = el("div", "node" + (run ? " watched " + state : (PICKED === node.id ? " on" : "")));
   box.dataset.node = node.id;
   box.style.left = Math.round(node.at[0] || 0) + "px";
   box.style.top = Math.round(node.at[1] || 0) + "px";
@@ -192,31 +248,49 @@ function nodeBox(node) {
   names.appendChild(el("span", "nname", card ? card.name : node.card));
   names.appendChild(el("span", "ntag", card ? card.tagline : "not a card this launcher knows"));
   head.appendChild(names);
-  const off = el("button", "nx", "×");
-  off.title = "Take " + (card ? card.name : node.card) + " off the canvas";
-  off.onclick = (e) => { e.stopPropagation(); dropCard(node.id); };
-  head.appendChild(off);
+  if (!run) {
+    const off = el("button", "nx", "×");
+    off.title = "Take " + (card ? card.name : node.card) + " off the canvas";
+    off.onclick = (e) => { e.stopPropagation(); dropCard(node.id); };
+    head.appendChild(off);
+  }
   box.appendChild(head);
+  if (run) {
+    // On its own line rather than beside the name: every card on the canvas is the same width,
+    // and a state put next to "HOPE-pipelines" leaves the name an ellipsis. The state and the job
+    // ids are what is worth reading off the drawing - the ids because squeue is where a person
+    // goes next - and the folder is in the list beside it, where there is room for it.
+    const strip = el("div", "nrun");
+    strip.appendChild(el("span", "sp " + state, state));
+    if ((run.jobs || []).length) {
+      strip.appendChild(el("span", "njobs", (run.jobs.length === 1 ? "job " : "jobs ")
+                                            + run.jobs.join(" ")));
+    }
+    box.appendChild(strip);
+  }
   if (card) {
     const socks = el("div", "socks");
     const left = el("div", "col in"), right = el("div", "col out");
-    (card.inputs || []).forEach((p) => left.appendChild(socket(node, p, "in")));
-    (card.outputs || []).forEach((p) => right.appendChild(socket(node, p, "out")));
+    (card.inputs || []).forEach((p) => left.appendChild(socket(node, p, "in", !run)));
+    (card.outputs || []).forEach((p) => right.appendChild(socket(node, p, "out", !run)));
     socks.appendChild(left);
     socks.appendChild(right);
     box.appendChild(socks);
   }
-  box.addEventListener("pointerdown", (e) => startMove(e, node, box));
+  if (run) {
+    if (run.note) box.appendChild(el("div", "nnote", run.note));
+  } else {
+    box.addEventListener("pointerdown", (e) => startMove(e, node, box));
+  }
   return box;
 }
 
-function sizeCanvas() {
+function sizeBox(box, doc) {
   let w = CANVAS_MIN[0], h = CANVAS_MIN[1];
-  FLOW.nodes.forEach((n) => {
+  (doc.nodes || []).forEach((n) => {
     w = Math.max(w, Math.round(n.at[0] || 0) + 300);
     h = Math.max(h, Math.round(n.at[1] || 0) + 250);
   });
-  const box = $("canvas");
   box.style.width = w + "px";
   box.style.height = h + "px";
 }
@@ -226,15 +300,18 @@ function pointIn(e) {
   return { x: e.clientX - c.left, y: e.clientY - c.top };
 }
 
-function socketAt(id, side, port) {
-  const node = $("canvas").querySelector('.node[data-node="' + id + '"]');
+function socketAt(box, id, side, port) {
+  const node = box.querySelector('.node[data-node="' + id + '"]');
   return node ? node.querySelector('.sock[data-' + side + '="' + port + '"] .dot') : null;
 }
 
-function where(id, side, port) {
-  const dot = socketAt(id, side, port);
+/* Where a socket's dot has ended up, measured rather than worked out: a card is as tall as its own
+   text made it, so the only thing that knows where its third socket is is the card. The box has to
+   be on the screen for this to answer, which is why a stage is shown before it is drawn. */
+function where(box, id, side, port) {
+  const dot = socketAt(box, id, side, port);
   if (!dot) return null;
-  const c = $("canvas").getBoundingClientRect(), r = dot.getBoundingClientRect();
+  const c = box.getBoundingClientRect(), r = dot.getBoundingClientRect();
   return { x: r.left + r.width / 2 - c.left, y: r.top + r.height / 2 - c.top };
 }
 
@@ -251,15 +328,23 @@ function wirePath(d, cls) {
   return p;
 }
 
-function paintWires() {
-  const svg = $("wires");
+/* The links into a given box. On the canvas each also carries a wide invisible path so it can be
+   clicked off without aiming, and says why it is refused. A watched flow has neither, since there
+   is nothing there to change; instead a link goes solid once the card it leaves has finished, so
+   the drawing fills in as the flow runs. */
+function wiresInto(svg, box, doc, rows) {
   svg.innerHTML = "";
-  FLOW.edges.forEach((edge, i) => {
-    const a = where(edge.from, "out", edge.fromPort), b = where(edge.to, "in", edge.toPort);
+  (doc.edges || []).forEach((edge, i) => {
+    const a = where(box, edge.from, "out", edge.fromPort);
+    const b = where(box, edge.to, "in", edge.toPort);
     if (!a || !b) return;
-    const why = refusedEdge(edge);
     const d = curve(a, b);
-    // a wide invisible path over the thin one, so a link can be clicked off without aiming
+    if (rows) {
+      svg.appendChild(wirePath(d, "wire"
+        + (rowFor(rows, edge.from).state === "done" ? " ran" : " pending")));
+      return;
+    }
+    const why = refusedEdge(edge);
     const hit = wirePath(d, "hit");
     hit.addEventListener("click", () => { FLOW.edges.splice(i, 1); paint(); check(); });
     const tip = document.createElementNS("http://www.w3.org/2000/svg", "title");
@@ -268,11 +353,13 @@ function paintWires() {
     svg.appendChild(hit);
     svg.appendChild(wirePath(d, "wire" + (why ? " bad" : "")));
   });
-  if (WIRE) {
-    const a = where(WIRE.from, "out", WIRE.port);
+  if (!rows && WIRE) {
+    const a = where(box, WIRE.from, "out", WIRE.port);
     if (a) svg.appendChild(wirePath(curve(a, { x: WIRE.x, y: WIRE.y }), "wire live"));
   }
 }
+
+function paintWires() { wiresInto($("wires"), $("canvas"), FLOW, null); }
 
 /* ------------------------------------------------------------------ moving a card */
 function pick(id) {
@@ -297,7 +384,7 @@ function startMove(e, node, box) {
   const up = () => {
     box.removeEventListener("pointermove", move);
     box.removeEventListener("pointerup", up);
-    sizeCanvas();
+    sizeBox($("canvas"), FLOW);
     paintWires();
   };
   try { box.setPointerCapture(e.pointerId); } catch (ignore) { /* a mouse without capture */ }
@@ -336,7 +423,7 @@ function startWire(e, node, port) {
   e.preventDefault();
   e.stopPropagation();
   if (WIRE) return endWire();
-  const a = where(node.id, "out", port.key) || { x: 0, y: 0 };
+  const a = where($("canvas"), node.id, "out", port.key) || { x: 0, y: 0 };
   WIRE = { from: node.id, port: port.key, x: a.x, y: a.y, moved: false, armed: false };
   document.addEventListener("pointermove", onWireMove);
   document.addEventListener("pointerup", onWireUp);
@@ -551,6 +638,374 @@ async function loadSaved() {
   paintSaved();
 }
 
+/* ------------------------------------------------------------------ the flows queued from here */
+/* A queued flow runs on the cluster whether this window is open or not, so where each one landed
+   is kept in the settings file with the drawing it came from. This is how somebody who signs in
+   the next morning gets back to the flow they started: one choice from the list, and the run view
+   reads the record the flow's own jobs have been keeping meanwhile. */
+function paintQueued() {
+  const pick = $("flowruns");
+  pick.innerHTML = "";
+  const first = el("option", null, QUEUED.length ? "Watch a queued flow…"
+                                                 : "No queued flows yet");
+  first.value = "";
+  pick.appendChild(first);
+  QUEUED.forEach((r) => {
+    const o = el("option", null, (r.name || "a flow") + (r.started ? " · " + when(r.started) : ""));
+    o.value = r.folder;
+    o.title = r.folder;
+    pick.appendChild(o);
+  });
+  pick.value = "";
+  pick.disabled = !QUEUED.length;
+}
+
+async function loadQueued() {
+  try { QUEUED = (await api("/api/flow/queued")).runs || []; } catch (failure) { QUEUED = []; }
+  paintQueued();
+}
+
+/* ------------------------------------------------------------------ the stages */
+/* Which of the three the view is showing. The editing controls go with the canvas: on the other
+   two stages they would act on a drawing nobody is looking at, and Clear on top of a plan a person
+   is about to queue would be a trap. The two lists stay, because picking another flow or another
+   run is a way out of both sheets. */
+function stage(which) {
+  STAGE = which;
+  $("flowwrap").hidden = which !== "draw";
+  $("flowplan").hidden = which !== "plan";
+  $("flowrun").hidden = which !== "run";
+  ["namebox", "flowsave", "flowforget", "flowexample", "flowclear"].forEach((id) => {
+    $(id).hidden = which !== "draw";
+  });
+  if (which !== "run") {
+    clearTimeout(runTimer);
+    runTimer = 0;
+  }
+}
+
+/* The path with a button that puts it on the clipboard, as a handed-over run has in a tool's tab.
+   A page may write to the clipboard only inside a click, and on some machines Chrome refuses it
+   outright, so the fallback selects the text for Ctrl+C rather than leaving nothing to copy. */
+function pathLine(path) {
+  const row = el("div", "pathrow");
+  const code = el("code", null, path);
+  row.appendChild(code);
+  const copy = el("button", "btn sm", "Copy");
+  copy.title = "Put this folder on the clipboard";
+  copy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(path);
+      flash("Copied. Paste it wherever the folder is wanted.");
+    } catch (refused) {
+      const range = document.createRange();
+      range.selectNodeContents(code);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      flash("Selected. Press Ctrl+C to copy it.", true);
+    }
+  };
+  row.appendChild(copy);
+  return row;
+}
+
+/* ------------------------------------------------------------------ the plan */
+/* Launch queues nothing. It asks the cluster what the flow would do and shows that, because the
+   press commits an allocation that can run for days and until it has been read there is nothing
+   to decide on. Queue it, in the bar underneath, is the only thing on this page that queues. */
+async function showPlan() {
+  FLOW.name = $("flowname").value.trim();
+  const mine = ++planSeq;
+  PLAN = null;
+  stage("plan");
+  paintPlan();
+  let got;
+  try {
+    got = await api("/api/flow/plan", { flow: FLOW });
+  } catch (failure) {
+    if (mine !== planSeq || STAGE !== "plan") return;
+    PLAN = { failed: failure.message };
+    paintPlan();
+    return;
+  }
+  // A later plan has already been asked for, or Back was pressed while the cluster worked this one
+  // out: this answer is about a flow nobody is looking at, and a plan that is about the wrong flow
+  // is worse than no plan, because it is the thing Queue it is pressed on the strength of.
+  if (mine !== planSeq || STAGE !== "plan") return;
+  PLAN = got;
+  paintPlan();
+}
+
+function planStep(row, n) {
+  const li = el("li", "planstep");
+  const card = cardOf(row.card);
+  const head = el("div", "psthead");
+  head.appendChild(el("span", "pstn", String(n)));
+  const badge = el("span", "pbadge");
+  if (card) badge.appendChild(cardGlyph(card));
+  head.appendChild(badge);
+  head.appendChild(el("span", "pstname", row.name || row.card));
+  head.appendChild(el("span", "pstafter", (row.waits_for || []).length
+    ? "after " + row.waits_for.join(" and ")
+    : "starts at once: nothing arrives at it"));
+  li.appendChild(head);
+  const facts = el("dl", "pstfacts");
+  // The numbers behind the cost are the whole reason for reading this, so they are a row of their
+  // own rather than a parenthesis after what the card queues.
+  [["queues", row.queues], ["the numbers", row.scale]].forEach((pair) => {
+    if (!pair[1]) return;
+    facts.appendChild(el("dt", null, pair[0]));
+    facts.appendChild(el("dd", null, pair[1]));
+  });
+  if (row.lands_in) {
+    facts.appendChild(el("dt", null, "lands in"));
+    const dd = el("dd");
+    dd.appendChild(pathLine(row.lands_in));
+    facts.appendChild(dd);
+  }
+  li.appendChild(facts);
+  return li;
+}
+
+function planBlock(cls, title, lines) {
+  const box = el("div", cls);
+  box.appendChild(el("div", "plab", title));
+  const list = el("ul", "notelist");
+  lines.forEach((line) => list.appendChild(el("li", null, line)));
+  box.appendChild(list);
+  return box;
+}
+
+function paintPlan() {
+  const body = $("planbody");
+  const why = $("planwhy");
+  body.innerHTML = "";
+  why.innerHTML = "";
+  const wide = el("div", "sheetwide");
+  body.appendChild(wide);
+  $("planqueue").hidden = true;
+  $("planqueue").disabled = false;
+  $("planqueue").textContent = "Queue it";
+
+  if (!PLAN) {
+    wide.appendChild(el("p", "empty", "Working out what this flow would do, on the cluster…"));
+    why.appendChild(el("p", "pgood", "Nothing has been queued."));
+    return;
+  }
+  if (PLAN.failed) {
+    wide.appendChild(planBlock("planbad", "The plan could not be worked out", [PLAN.failed]));
+    why.appendChild(el("p", "runbad", "Nothing has been queued."));
+    return;
+  }
+
+  const head = el("div", "sheethead");
+  head.appendChild(el("h2", null, PLAN.name || "this flow"));
+  head.appendChild(el("p", "sheetwhy", "Nothing is queued yet. This is what Queue it would commit, "
+    + "worked out on the cluster where the tools actually are."));
+  wide.appendChild(head);
+
+  const where = el("div", "planwhere");
+  where.appendChild(el("span", "plab", "the flow's own folder"));
+  where.appendChild(pathLine(PLAN.folder || ""));
+  wide.appendChild(where);
+
+  // The notes come before the cards. They are the warnings a person most needs - that two tracks
+  // arriving at the simulation double the number of runs, that a length is a long commitment - and
+  // under a list of five cards they would be read after the decision rather than before it.
+  if ((PLAN.notes || []).length) {
+    wide.appendChild(planBlock("planotes", "Before you queue this", PLAN.notes));
+  }
+  if ((PLAN.problems || []).length) {
+    wide.appendChild(planBlock("planbad", "This flow cannot be queued yet", PLAN.problems));
+  }
+
+  const steps = el("ol", "plansteps");
+  (PLAN.cards || []).forEach((row, i) => steps.appendChild(planStep(row, i + 1)));
+  wide.appendChild(steps);
+
+  if ((PLAN.problems || []).length) {
+    why.appendChild(el("p", "runbad", "Go back and put that right first. There is nothing to "
+      + "queue while a flow is refused."));
+    return;
+  }
+  $("planqueue").hidden = false;
+  why.appendChild(el("p", "pgood", (PLAN.cards || []).length + " cards, in that order. Nothing is "
+    + "queued until Queue it is pressed, and once it is, the flow carries on whether this window "
+    + "is open or not."));
+}
+
+/* ------------------------------------------------------------------ a flow that is running */
+/* Whether anything is still to happen, which is what the refreshing and the two buttons turn on. */
+function busy(got) {
+  return !!got && (got.cards || []).some((c) => ENDED.indexOf(c.state) < 0);
+}
+
+/* The one word for the whole flow. The record's own `state` is not used for it: that calls a flow
+   failed as soon as anything in it did not finish, which is every card of a flow somebody stopped
+   on purpose, and a person who pressed Stop should not be told their flow failed. */
+function overall(got) {
+  const rows = (got && got.cards) || [];
+  if (!rows.length) return "waiting";
+  if (rows.some((r) => r.state === "failed")) return "failed";
+  if (busy(got)) return "running";
+  if (rows.every((r) => r.state === "done")) return "done";
+  return "stopped";
+}
+
+/* How long ago the record was read. app.js's when() is for run folders, where a minute's
+   resolution is plenty; here somebody is watching, and "1 min ago" the instant after pressing
+   Refresh reads as though nothing had happened. */
+function ago(ms) {
+  const gap = Math.round((Date.now() - ms) / 1000);
+  if (gap < 10) return "just now";
+  if (gap < 90) return gap + " seconds ago";
+  return when(Math.round(ms / 1000));
+}
+
+function watch(folder) {
+  const kept = QUEUED.find((r) => r.folder === folder);
+  WATCHING = { folder: folder, flow: kept && kept.flow ? asDrawn(kept.flow) : null,
+               status: null, read: 0, why: "" };
+  stage("run");
+  paintRun();
+  return readRun();
+}
+
+async function readRun() {
+  if (!WATCHING) return;
+  const folder = WATCHING.folder;
+  let got = null, failed = "";
+  try {
+    got = await api("/api/flow/status", { folder: folder });
+  } catch (failure) {
+    failed = failure.message;
+  }
+  // Another flow may have been picked while the cluster was answering about this one; that answer
+  // belongs to a folder nobody is looking at any more.
+  if (!WATCHING || WATCHING.folder !== folder) return;
+  // A read that failed says so in the bar but leaves the last answer on the screen. A connection
+  // that drops for a minute is the ordinary case, and blanking a flow a person is watching over
+  // one missed read would look like the flow had gone.
+  if (got) WATCHING.status = got;
+  WATCHING.why = failed;
+  WATCHING.read = Date.now();
+  paintRun();
+  later();
+}
+
+/* Read it again while anything is still to happen, and not once everything has ended: a finished
+   flow does not change again, and a timer left running on one would wake the login node for an
+   answer nobody is waiting for. */
+function later() {
+  clearTimeout(runTimer);
+  runTimer = 0;
+  if (STAGE !== "run" || !WATCHING || !busy(WATCHING.status)) return;
+  runTimer = setTimeout(() => { readRun(); }, RUN_EVERY);
+}
+
+/* A card as the list beside the drawing has it: what became of it, why, whose jobs were its own,
+   and where its work is. A finished card's folder is the thing a person actually came for, so it
+   is offered the way Results hands a run on - the path on the clipboard, and the tool that reads
+   it opened on a tab of its own, because the tools cannot yet be opened on a folder. */
+function runCard(row) {
+  const card = cardOf(row.card);
+  const box = el("div", "rcard " + row.state);
+  const head = el("div", "rchead");
+  const badge = el("span", "pbadge");
+  if (card) badge.appendChild(cardGlyph(card));
+  head.appendChild(badge);
+  head.appendChild(el("span", "pstname", row.name || row.card));
+  head.appendChild(el("span", "sp " + row.state, row.state));
+  box.appendChild(head);
+  if (row.note) box.appendChild(el("p", "rcnote", row.note));
+  if ((row.jobs || []).length) {
+    const jobs = el("div", "rcjobs");
+    jobs.appendChild(el("span", "plab", row.jobs.length === 1 ? "its job" : "its jobs"));
+    jobs.appendChild(el("code", null, row.jobs.join(" ")));
+    box.appendChild(jobs);
+  }
+  if (row.rundir) {
+    const where = el("div", "rcwhere");
+    where.appendChild(el("span", "plab", row.state === "done" ? "what it left" : "its run folder"));
+    where.appendChild(pathLine(row.rundir));
+    box.appendChild(where);
+    const to = row.state === "done" && card && card.tool ? byKey(card.tool) : null;
+    if (to) {
+      const acts = el("div", "acts");
+      const open = el("button", "btn sm next", "Open in " + to.name);
+      open.title = "Copy this folder and open " + to.name + " on it";
+      open.onclick = () => open_tool(card.tool, open, row.rundir);
+      acts.appendChild(open);
+      box.appendChild(acts);
+    }
+  }
+  if (row.changed) box.appendChild(el("div", "rcwhen", "last changed " + when(row.changed)));
+  return box;
+}
+
+function paintRun() {
+  const head = $("runhead"), list = $("runcards"), why = $("runwhy");
+  head.innerHTML = "";
+  list.innerHTML = "";
+  why.innerHTML = "";
+  if (!WATCHING) return;
+  const got = WATCHING.status;
+  const rows = (got && got.cards) || [];
+  const drawing = WATCHING.flow;
+
+  const name = (got && got.name) || (drawing && drawing.name) || "this flow";
+  const title = el("h2", null, name);
+  if (got) title.appendChild(el("span", "sp " + overall(got), overall(got)));
+  head.appendChild(title);
+  // How far it has got and where it is, on one line: this bar sits over the drawing, and every
+  // row it takes is a row of the flow a person cannot see.
+  const line = el("div", "runline");
+  line.appendChild(el("span", "runhow", got
+    ? got.done + " of " + got.of + " cards done. Read " + ago(WATCHING.read) + "."
+    : "Reading the record this flow's own jobs keep…"));
+  line.appendChild(el("span", "plab", "the flow's own folder"));
+  line.appendChild(pathLine(WATCHING.folder));
+  head.appendChild(line);
+
+  // The drawing is the one kept with the folder when the flow was queued. A flow queued from a
+  // file on the cluster, or from a settings file since replaced, has none, and the list beside it
+  // is then the whole view rather than half of it.
+  $("runcanvasgrid").hidden = !drawing;
+  if (drawing) drawFlow($("runcanvas"), $("runwires"), drawing, rows);
+
+  if (!rows.length) {
+    list.appendChild(el("p", "empty", WATCHING.why
+      ? "The flow's record could not be read."
+      : "Reading the flow's record…"));
+  }
+  rows.forEach((row) => list.appendChild(runCard(row)));
+  if (!drawing && rows.length) {
+    list.appendChild(el("p", "phint", "The drawing this flow was queued from is not kept on this "
+      + "computer, so only the cards are shown."));
+  }
+
+  if (WATCHING.why) {
+    why.appendChild(el("p", "runbad", WATCHING.why));
+  } else if (got && got.note) {
+    why.appendChild(el("p", "runbad", got.note));
+  } else if (got) {
+    why.appendChild(el("p", "pgood", busy(got)
+      ? "Read again every " + Math.round(RUN_EVERY / 1000) + " seconds while anything is left to "
+        + "happen. It runs whether this window is open or not."
+      : "Nothing more will happen on its own."));
+  }
+
+  // Carry on queues the cards that have not finished, so it is offered only once nothing of the
+  // flow is left in the queue: pressed while a card is still running it would say so and do
+  // nothing, which is a worse answer than not offering it.
+  const running = busy(got);
+  const finished = rows.length && rows.every((r) => r.state === "done");
+  $("runcarry").hidden = !got || running || finished;
+  $("runcarry").disabled = false;
+  $("runstop").hidden = !running;
+  $("runstop").disabled = false;
+}
+
 /* ------------------------------------------------------------------ the view */
 async function openFlows() {
   if (!CAT) {
@@ -563,6 +1018,14 @@ async function openFlows() {
     paintPalette();
   }
   await loadSaved();
+  await loadQueued();
+  // Coming back to the view leaves it on the stage it was left on: somebody who went to Results to
+  // look something up has not stopped watching their flow.
+  if (STAGE === "plan") return paintPlan();
+  if (STAGE === "run") {
+    paintRun();
+    return readRun();
+  }
   paint();
   await check();
 }
@@ -616,11 +1079,72 @@ $("flowsaved").onchange = (e) => {
   e.target.value = "";
 };
 
-$("flowlaunch").onclick = async () => {
+$("flowruns").onchange = (e) => {
+  const folder = e.target.value;
+  e.target.value = "";
+  if (folder) watch(folder);
+};
+
+/* Launch reads the plan out of the cluster and shows it. Queue it is the press that commits. */
+$("flowlaunch").onclick = () => { showPlan(); };
+
+$("planback").onclick = () => {
+  PLAN = null;
+  stage("draw");
+  paint();
+  check();
+};
+
+$("planqueue").onclick = async () => {
+  const button = $("planqueue");
+  button.disabled = true;
+  button.textContent = "queueing…";
   try {
-    await api("/api/flow/launch", { flow: FLOW });
-    flash("The flow is queued. Its jobs are in Results as they land.");
+    const got = await api("/api/flow/launch", { flow: FLOW });
+    await loadQueued();
+    flash((PLAN && PLAN.name ? PLAN.name : "The flow") + " is queued, in " + got.folder
+          + ". It carries on whether this window is open or not.");
+    PLAN = null;
+    await watch(got.folder);
+    return;
   } catch (failure) { flash(failure.message, true); }
+  button.disabled = false;
+  button.textContent = "Queue it";
+};
+
+$("runback").onclick = () => {
+  WATCHING = null;
+  stage("draw");
+  paint();
+  check();
+};
+
+$("runreload").onclick = () => { readRun(); };
+
+$("runcarry").onclick = async () => {
+  if (!WATCHING) return;
+  const button = $("runcarry");
+  button.disabled = true;
+  button.textContent = "queueing…";
+  try {
+    await api("/api/flow/resume", { folder: WATCHING.folder });
+    flash("Carrying on from the first card that has not finished. What has already run is left "
+          + "where it is and is not run again.");
+  } catch (failure) { flash(failure.message, true); }
+  button.textContent = "Carry on";
+  await readRun();
+};
+
+$("runstop").onclick = async () => {
+  if (!WATCHING) return;
+  const button = $("runstop");
+  button.disabled = true;
+  try {
+    await api("/api/flow/stop", { folder: WATCHING.folder });
+    flash("Cancelled what this flow still had in the queue. What has finished is on disk and "
+          + "stays there; Carry on picks it up from the first card that did not.");
+  } catch (failure) { flash(failure.message, true); }
+  await readRun();
 };
 
 /* a card dragged off the palette lands where it was dropped */

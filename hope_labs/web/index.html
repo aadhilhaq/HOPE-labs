@@ -73,13 +73,15 @@
         <input id="flowname" placeholder="Name this flow" autocomplete="off" spellcheck="false">
       </span>
       <select id="flowsaved" class="pick" title="A flow kept on this computer"></select>
+      <select id="flowruns" class="pick"
+              title="A flow that has been queued from this computer, and how far it has got"></select>
       <button class="btn sm" id="flowsave">Save</button>
       <button class="btn sm" id="flowforget" disabled>Forget</button>
       <button class="btn sm" id="flowexample">Start from an example</button>
       <button class="btn sm" id="flowclear">Clear</button>
     </header>
 
-    <div class="flowwrap">
+    <div class="flowwrap" id="flowwrap">
       <aside class="palette">
         <div class="rlabel pl">The cards</div>
         <div id="palette"></div>
@@ -96,11 +98,44 @@
         </div>
         <div class="probbar">
           <div class="probs" id="problems"></div>
-          <button class="btn pri" id="flowlaunch" disabled>Launch the flow</button>
+          <button class="btn pri" id="flowlaunch" disabled>Launch the flow…</button>
         </div>
       </div>
 
       <aside class="panel" id="panel"></aside>
+    </div>
+
+    <!-- The plan. Launch asks the cluster what the flow would do and shows it here, queueing
+         nothing: Queue it, in the bar below, is the only thing on this page that commits an
+         allocation. The canvas is left standing behind this, so Back is a return and not a redraw. -->
+    <div class="sheet" id="flowplan" hidden>
+      <div class="sheetbody" id="planbody"></div>
+      <div class="sheetbar">
+        <div class="probs" id="planwhy"></div>
+        <button class="btn sm" id="planback">Back to the canvas</button>
+        <button class="btn pri" id="planqueue">Queue it</button>
+      </div>
+    </div>
+
+    <!-- A flow that is running: its own cards where they were drawn, coloured by what has become
+         of each, with the folders and job ids beside them. -->
+    <div class="sheet" id="flowrun" hidden>
+      <div class="runhead" id="runhead"></div>
+      <div class="runsplit">
+        <div class="canvasgrid" id="runcanvasgrid">
+          <div class="canvas" id="runcanvas">
+            <svg class="wires" id="runwires"></svg>
+          </div>
+        </div>
+        <aside class="runcards" id="runcards"></aside>
+      </div>
+      <div class="sheetbar">
+        <div class="probs" id="runwhy"></div>
+        <button class="btn sm" id="runback">Back to the canvas</button>
+        <button class="btn sm" id="runreload">Refresh</button>
+        <button class="btn sm" id="runcarry">Carry on</button>
+        <button class="btn sm" id="runstop">Stop</button>
+      </div>
     </div>
   </section>
 
