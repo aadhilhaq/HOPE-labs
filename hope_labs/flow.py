@@ -166,14 +166,31 @@ class Flow:
             if why:
                 bad.append("%s to %s: %s" % (src.kind.name, dst.kind.name, why))
 
+        drawn = set()
+        for e in self.edges:
+            at = (e.src, e.src_port, e.dst, e.dst_port)
+            if at in drawn:
+                bad.append("the same link is drawn twice, from %s to %s"
+                           % (self.node(e.src).kind.name, self.node(e.dst).kind.name))
+            drawn.add(at)
+
         for n in self.nodes:
             for port in n.kind.inputs:
-                if not port.required:
-                    continue
-                if not [e for e in self.into(n.id) if e.dst_port == port.key]:
+                arriving = [e for e in self.into(n.id) if e.dst_port == port.key]
+                if port.required and not arriving:
                     bad.append("%s has nothing arriving at %s" % (n.kind.name, port.label))
+                # A port that takes one thing and is given several is not a flow anybody can run:
+                # the tool would be told two receptors, or two sets of peptides, with nothing to
+                # say which. The canvas refuses the second while it is drawn; this is for a flow
+                # that reached the cluster as a file.
+                if not port.many and len(arriving) > 1:
+                    bad.append("%s takes one thing at %s, and %d arrive"
+                               % (n.kind.name, port.label, len(arriving)))
             if n.card != "target" and self.target_of(n.id) is None:
                 bad.append("%s is not connected back to the target" % n.kind.name)
+            if not n.kind.ready:
+                bad.append("%s cannot be started by a flow yet%s"
+                           % (n.kind.name, (": " + n.kind.note) if n.kind.note else ""))
 
         try:
             self.order()

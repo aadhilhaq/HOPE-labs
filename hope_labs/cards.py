@@ -58,7 +58,8 @@ class Card:
     card has no tool: it is where the person's own input goes.
     """
 
-    def __init__(self, key, name, tagline, tool="", inputs=(), outputs=(), settings=(), note=""):
+    def __init__(self, key, name, tagline, tool="", inputs=(), outputs=(), settings=(), note="",
+                 ready=True):
         self.key = key
         self.name = name
         self.tagline = tagline
@@ -67,6 +68,10 @@ class Card:
         self.outputs = tuple(outputs)
         self.settings = tuple(settings)
         self.note = note
+        #: Whether a flow can start this tool yet. A card that cannot is still drawn, and still
+        #: says what it would do, but a flow holding one is refused before anything is queued
+        #: rather than failing in a job twenty minutes later.
+        self.ready = ready
 
     def port_in(self, key):
         return next((p for p in self.inputs if p.key == key), None)
@@ -76,7 +81,7 @@ class Card:
 
     def as_json(self):
         return {"key": self.key, "name": self.name, "tagline": self.tagline, "tool": self.tool,
-                "note": self.note,
+                "note": self.note, "ready": self.ready,
                 "inputs": [p.as_json() for p in self.inputs],
                 "outputs": [p.as_json() for p in self.outputs],
                 "settings": [s.as_json() for s in self.settings]}
@@ -88,7 +93,7 @@ class Setting:
     def __init__(self, key, label, kind, default=None, choices=(), why="", optional=False):
         self.key = key
         self.label = label
-        self.kind = kind                # text | number | range | choice | residues | yesno | path
+        self.kind = kind                # text | number | choice | residues | yesno | path
         self.default = default
         self.choices = tuple(choices)
         self.why = why                  # the line under the field
@@ -145,7 +150,12 @@ APTAMER = Card(
     "aptamer", "HOPE-Aptamer", "design and fold an aptamer",
     tool="aptamer",
     inputs=[Port("target", "target", ["target"])],
-    outputs=[Port("poses", "aptamer poses", ["poses"])])
+    outputs=[Port("poses", "aptamer poses", ["poses"])],
+    # Its poses can be simulated - the simulation has read a HOPE-Aptamer run for a long time -
+    # but how to start a run of it without its page is not settled, so a flow will not start one.
+    ready=False,
+    note="Not yet startable from a flow: its poses can be simulated, but a run of it is still "
+         "started from its own page.")
 
 ADCP = Card(
     "adcp", "ADCP docking", "dock peptides into the target",
@@ -190,7 +200,7 @@ def link_refused(from_card, from_port, to_card, to_port, settings=None):
     kind = next((k for k in out.kinds if into.takes(k)), "")
     if not kind:
         return ("%s carries %s; %s's %s takes %s"
-                % (out.label, KINDS[out.kinds[0]], b.name, into.label,
+                % (out.label, " or ".join(KINDS[k] for k in out.kinds), b.name, into.label,
                    " or ".join(KINDS[k] for k in into.kinds)))
     # The one refusal that is about a number rather than a kind. A binder longer than the docking
     # will take is not a link anybody can rescue later, so it is refused while it is being drawn.
@@ -198,8 +208,16 @@ def link_refused(from_card, from_port, to_card, to_port, settings=None):
     # of the design tools beside it, and docking them is the ordinary way round.
     if kind == "sequences" and b.key == "adcp" and out.sized:
         longest = (settings or {}).get("binder_max")
-        if longest and int(longest) > DOCKABLE_MAX_LENGTH:
+        try:
+            longest = int(longest)
+        except (TypeError, ValueError):
+            # No length asked for yet. The whole flow is refused for that separately, but this is
+            # also asked on its own, by the runner, where letting it pass would dock a binder far
+            # too long for the docking to take.
+            return ("this link needs the binder length the flow asks for, and the target does "
+                    "not give one")
+        if longest > DOCKABLE_MAX_LENGTH:
             return ("the docking takes peptides of %d residues or fewer, and this flow asks for "
                     "binders of up to %d. Simulate these designs directly, or ask for shorter ones."
-                    % (DOCKABLE_MAX_LENGTH, int(longest)))
+                    % (DOCKABLE_MAX_LENGTH, longest))
     return ""
