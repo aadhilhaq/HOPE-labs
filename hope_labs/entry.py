@@ -85,7 +85,7 @@ def main(argv=None):
         # binder too long to dock is cautioned rather than refused.
         from . import canvas
         from hope_flow.flow import Flow
-        assert len(canvas.catalogue()["cards"]) == 6, "a card went missing from the catalogue"
+        assert len(canvas.catalogue()["cards"]) == 8, "a card went missing from the catalogue"
         assert canvas.check(canvas.example())["problems"] == [], canvas.check(canvas.example())
         assert canvas.refusals({"binder_max": 100})["bindcraft:sequences>adcp:sequences"] == "", \
             "a long binder is refused rather than cautioned"

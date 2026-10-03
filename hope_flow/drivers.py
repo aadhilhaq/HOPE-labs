@@ -30,7 +30,17 @@ INSTALLS = {
     "adcp": LAB_ROOT + "/ADCP_docking",
     "aptamer": LAB_ROOT + "/HOPE-aptamer-pipeline",
     "hopemd": LAB_ROOT + "/HOPE-MD/MD",
+    "rfdiffusion": LAB_ROOT + "/ML_programs/RFdiffusion",
+    "boltzgen": LAB_ROOT + "/envs/boltzgen",
 }
+
+#: The two design tools the lab runs that have no launcher of their own: no page, no submitting
+#: script, nothing that already knows how to queue them. Every other driver here goes through a
+#: tool's own door, as the docstring says; for these two there is no door, so the flow writes
+#: their job itself. That is the exception, and it is written down rather than left to be noticed.
+SE3NV = LAB_ROOT + "/envs/SE3nv"                      # RFdiffusion's environment, and ProteinMPNN runs in it too
+DL_BINDER_DESIGN = LAB_ROOT + "/ML_programs/dl_binder_design"
+BOLTZGEN_CACHE = LAB_ROOT + "/envs/boltzgen_cache"    # the weights, fetched on a login node
 
 #: Where a tool's own run folders go, when the card does not say.
 RUNS = {
@@ -39,6 +49,8 @@ RUNS = {
     "adcp": os.path.join(os.environ.get("SCRATCH", "/tmp"), "adcp_runs"),
     "aptamer": os.path.join(os.environ.get("SCRATCH", "/tmp"), "hope-aptamer-runs"),
     "hopemd": os.path.join(os.environ.get("SCRATCH", "/tmp"), "hopemd_runs"),
+    "rfdiffusion": os.path.join(os.environ.get("SCRATCH", "/tmp"), "rfdiffusion_runs"),
+    "boltzgen": os.path.join(os.environ.get("SCRATCH", "/tmp"), "boltzgen_runs"),
 }
 
 RCSB = "https://files.rcsb.org/download/%s.pdb"
@@ -195,6 +207,148 @@ def _pipelines(node, flow, carried, flow_dir, record, say=print):
     if not jid.isdigit():
         raise NotWired("the design run did not queue a job (it said %r)" % jid)
     return got.get("rundir") or where, [jid]
+
+
+# --- the two design tools with no launcher of their own -------------------------------------
+# Everything else here hands a tool its own command line and lets that tool queue itself. These
+# two have nothing to hand to, so this writes the job. Both end by writing designs.json, which is
+# the one thing the next card reads; the shape of it is documented in adapters.py.
+
+JOB = """#!/bin/bash
+#SBATCH --job-name={name}
+#SBATCH --partition={partition}
+#SBATCH --gres=gpu:{gpu}:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task={cpus}
+#SBATCH --mem={mem}G
+#SBATCH --time={walltime}
+#SBATCH --output={out}/slurm_%j.out
+{account}set -uo pipefail
+umask 002
+OUT={out}
+# Nothing may reach $HOME: it holds 10 000 files and these write caches by the thousand.
+export XDG_CACHE_HOME="$OUT/cache" MPLCONFIGDIR="$OUT/cache/mpl" CUDA_CACHE_PATH="$OUT/cache/nv"
+export TMPDIR="$OUT/cache/tmp" HF_HOME={hf_home} TORCH_HOME="$OUT/cache/torch"
+mkdir -p "$TMPDIR" "$MPLCONFIGDIR" "$CUDA_CACHE_PATH"
+unset PYTHONPATH PYTHONHOME
+{body}
+status=$?
+echo "flow: {name} finished with status $status"
+exit $status
+"""
+
+
+def _queue(where, script, say):
+    """Write a job script into the run folder, queue it, and give back its id."""
+    path = os.path.join(where, "job.sbatch")
+    with open(path, "w") as fh:
+        fh.write(script)
+    done = subprocess.run(["sbatch", "--parsable", path], cwd=where, capture_output=True, text=True)
+    out = ((done.stdout or "") + (done.stderr or "")).strip()
+    if done.returncode != 0:
+        raise NotWired("sbatch refused the job: %s" % (out[-400:] or "it said nothing"))
+    found = JOBID.search(done.stdout or "")
+    if not found:
+        raise NotWired("sbatch queued nothing it could name: %r" % out[-200:])
+    say("   | queued job %s" % found.group(1))
+    return found.group(1)
+
+
+def _design_job(node, flow, carried, card, body, say, cpus=8, mem=48, hf_home='"$OUT/cache/hf"'):
+    """The parts of a design job that do not differ between the two tools."""
+    s = node.settings
+    where = _unique(_run_root(node, card), "%s_%s" % (flow.name, node.id))
+    os.makedirs(os.path.join(where, "cache"), exist_ok=True)
+    gpu = str(s.get("gpu") or "a100")
+    if gpu == "auto":
+        gpu = "a100"
+    script = JOB.format(
+        name="%s_%s" % (card, node.id), partition=str(s.get("partition") or "gpu"),
+        gpu=gpu, cpus=cpus, mem=mem, walltime=str(s.get("walltime") or "12:00:00"),
+        out=where, hf_home=hf_home,
+        account=("#SBATCH --account=%s\n" % s["account"]) if s.get("account") else "",
+        body=body(where))
+    return where, [_queue(where, script, say)]
+
+
+def _rfdiffusion(node, flow, carried, flow_dir, record, say=print):
+    """Binder backbones from RFdiffusion, sequences from ProteinMPNN, in one job.
+
+    Both halves run in RFdiffusion's own environment: ProteinMPNN needs only torch and numpy, and
+    SE3nv has them. The environment the lab built for it separately is missing its standard
+    library and has never run.
+    """
+    target = _target(carried)
+    s = node.settings
+    if not os.path.isdir(DL_BINDER_DESIGN):
+        raise NotWired("ProteinMPNN is not unpacked at %s, so a design would have no sequence"
+                       % DL_BINDER_DESIGN)
+    plan = {
+        "target": target["path"],
+        "chains": target.get("chains") or "A",
+        "hotspots": target.get("hotspots") or "",
+        "binder_min": int(target.get("binder_min") or 70),
+        "binder_max": int(target.get("binder_max") or 100),
+        "designs": int(s.get("designs") or 10),
+        "seqs_per_backbone": int(s.get("seqs_per_backbone") or 8),
+        "noise_scale": float(s.get("noise_scale") or 0),
+        "diffuser_T": int(s.get("diffuser_T") or 0),
+        "ckpt": str(s.get("ckpt") or ""),
+        "rfdiffusion": INSTALLS["rfdiffusion"],
+        "dl_binder_design": DL_BINDER_DESIGN,
+        "se3nv_python": os.path.join(SE3NV, "bin", "python"),
+    }
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers",
+                          "rfdiffusion_design.py")
+
+    def body(where):
+        with open(os.path.join(where, "plan.json"), "w") as fh:
+            json.dump(dict(plan, out=where), fh, indent=1)
+        return ('%s %s %s' % (shlex.quote(plan["se3nv_python"]), shlex.quote(helper),
+                              shlex.quote(os.path.join(where, "plan.json"))))
+
+    return _design_job(node, flow, carried, "rfdiffusion", body, say)
+
+
+def _boltzgen(node, flow, carried, flow_dir, record, say=print):
+    """Binders generated by BoltzGen, folded and ranked by its own pipeline.
+
+    The weights are 10 GB and live in the group space, fetched on a login node: a compute node has
+    no internet, so the cache is pointed at that copy and the run is told not to reach for more.
+    """
+    target = _target(carried)
+    s = node.settings
+    if not os.path.isdir(BOLTZGEN_CACHE):
+        raise NotWired("BoltzGen's weights are not in %s; they are fetched on a login node"
+                       % BOLTZGEN_CACHE)
+    helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers",
+                          "boltzgen_design.py")
+    plan = {
+        "target": target["path"],
+        "chains": target.get("chains") or "A",
+        "hotspots": target.get("hotspots") or "",
+        "binder_min": int(target.get("binder_min") or 70),
+        "binder_max": int(target.get("binder_max") or 100),
+        "designs": int(s.get("designs") or 10),
+        "protocol": str(s.get("protocol") or "protein-anything"),
+        "cyclic": bool(s.get("cyclic")),
+        "sampling_steps": int(s.get("sampling_steps") or 0),
+        "fold": s.get("fold") is not False,
+        "boltzgen": os.path.join(INSTALLS["boltzgen"], "bin", "boltzgen"),
+        "cache": BOLTZGEN_CACHE,
+    }
+
+    def body(where):
+        with open(os.path.join(where, "plan.json"), "w") as fh:
+            json.dump(dict(plan, out=where), fh, indent=1)
+        return ("export HF_HUB_OFFLINE=1\n%s %s %s"
+                % (shlex.quote(os.path.join(INSTALLS["boltzgen"], "bin", "python")),
+                   shlex.quote(helper), shlex.quote(os.path.join(where, "plan.json"))))
+
+    # BoltzGen wants 40 GB of card: upstream reports running out of memory on a modest target at
+    # 16 GB, and again in its analysis step at a hundred designs.
+    return _design_job(node, flow, carried, "boltzgen", body, say, cpus=8, mem=64,
+                       hf_home=shlex.quote(BOLTZGEN_CACHE))
 
 
 def _last_json(text):
@@ -540,6 +694,8 @@ BY_CARD = {
     "target": _target_card,
     "pipelines": _pipelines,
     "bindcraft": _bindcraft,
+    "rfdiffusion": _rfdiffusion,
+    "boltzgen": _boltzgen,
     "adcp": _adcp,
     "hopemd": _hopemd,
 }

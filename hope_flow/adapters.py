@@ -378,16 +378,106 @@ def _bindcraft_chains(path):
     return got if "binder" in got and "target" in got else None
 
 
+#: What a design tool with no page of its own leaves for the next card. RFdiffusion and BoltzGen
+#: are driven from this repository rather than by a tool that already had a run folder of its own,
+#: so their drivers write this file and these two adapters are all that is needed to read it. One
+#: settled file rather than a scrape of each tool's output: the driver knows what it ran, and a
+#: format agreed here cannot drift the way a parsed log does.
+#:
+#: <rundir>/designs.json
+#:   {"tool": "rfdiffusion",
+#:    "designs": [{"name": "design_0", "path": "/abs/design_0.pdb",
+#:                 "binder_chains": ["B"], "target_chains": ["A"],
+#:                 "sequence": "MKT...", "score": 0.87}, ...]}
+#:
+#: `score` is whatever that tool ranks by, and the driver writes the list best first, so the
+#: simulation takes the best few off the top without having to know which number it was.
+DESIGNS_FILE = "designs.json"
+
+
+def _designs(where):
+    """[the designs a driver recorded], best first, and a line saying where they came from."""
+    path = os.path.join(where or "", DESIGNS_FILE)
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            got = json.load(fh)
+    except (OSError, ValueError):
+        return [], "no %s in %s" % (DESIGNS_FILE, where or "the run")
+    designs = [d for d in (got.get("designs") or []) if isinstance(d, dict)]
+    return designs, "%s (%s)" % (DESIGNS_FILE, got.get("tool") or "a design run")
+
+
+def _designs_to_hopemd(flow, record, edge, flow_dir):
+    """Designed complexes, simulated as they stand.
+
+    The binder is already placed on the target in all of these, so there is nothing to dock first.
+    Which chain is which is taken from the record the driver wrote rather than guessed from size:
+    a binder longer than its target would otherwise be taken for the receptor.
+    """
+    where = _rundir(record, edge.src)
+    designs, read = _designs(where)
+    kept, dropped = [], []
+    for got in designs:
+        name = str(got.get("name") or "").strip() or "design"
+        path = str(got.get("path") or "")
+        if not path or not os.path.isfile(path):
+            dropped.append((name, "no structure on disk"))
+            continue
+        binder = [c for c in (got.get("binder_chains") or []) if c]
+        target = [c for c in (got.get("target_chains") or []) if c]
+        if not binder or not target:
+            dropped.append((name, "the record does not say which chain is the binder"))
+            continue
+        kept.append({"name": name, "path": path,
+                     "receptor_chains": target, "partner_chains": binder})
+    return {"kind": "complexes", "count": len(kept), "source_kind": "complex",
+            "designs": kept, "dropped": dropped,
+            "what": "%d complex(es) from %s%s" % (len(kept), read, _said(dropped))}
+
+
+def _designs_to_adcp(flow, record, edge, flow_dir):
+    """The designed sequences, for those short enough to dock.
+
+    A tool asked for a hundred-residue binder produces nothing this junction can pass, and the
+    canvas says so as a caution while the link is drawn. A caution rather than a refusal because
+    what the target card asks for is what the tool aims at, not what it produces: the answer is
+    only known here, from the designs themselves.
+    """
+    where = _rundir(record, edge.src)
+    designs, read = _designs(where)
+    pairs, dropped = [], []
+    for got in designs:
+        name = str(got.get("name") or "").strip() or "design"
+        seq = str(got.get("sequence") or "").strip().upper()
+        why = _dockable(name, seq)
+        if why:
+            dropped.append((name, why))
+        else:
+            pairs.append((name, seq))
+    path, kept, same = _peptides_file(flow_dir, edge.dst, pairs)
+    dropped.extend(same)
+    return {"kind": "sequences", "count": len(kept), "path": path, "dropped": dropped,
+            "what": "%d design(s) from %s%s" % (len(kept), read, _said(dropped))}
+
+
 #: (the card it leaves, the socket, the card it arrives at) -> the adapter.
 BY_JUNCTION = {
     ("target", "target", "pipelines"): _target_to_anything,
     ("target", "target", "bindcraft"): _target_to_anything,
+    ("target", "target", "rfdiffusion"): _target_to_anything,
+    ("target", "target", "boltzgen"): _target_to_anything,
     ("target", "target", "aptamer"): _target_to_anything,
     ("target", "target", "adcp"): _target_to_anything,
     ("target", "target", "hopemd"): _target_to_anything,
     ("pipelines", "sequences", "adcp"): _pipelines_to_adcp,
     ("bindcraft", "sequences", "adcp"): _bindcraft_to_adcp,
     ("bindcraft", "complexes", "hopemd"): _bindcraft_to_hopemd,
+    # Both design tools this repository drives itself leave the same record, so one pair of
+    # adapters reads both.
+    ("rfdiffusion", "sequences", "adcp"): _designs_to_adcp,
+    ("rfdiffusion", "complexes", "hopemd"): _designs_to_hopemd,
+    ("boltzgen", "sequences", "adcp"): _designs_to_adcp,
+    ("boltzgen", "complexes", "hopemd"): _designs_to_hopemd,
     ("adcp", "poses", "hopemd"): _adcp_to_hopemd,
     ("aptamer", "poses", "hopemd"): _aptamer_to_hopemd,
 }

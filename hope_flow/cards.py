@@ -223,6 +223,76 @@ BINDCRAFT = Card(
     ],
     note="Designs come out already placed on the target, so docking them again is optional.")
 
+# The two machine-learning design tools. Both are the same shape as BindCraft2 - a target in, a
+# binder placed on it out - and both differ from it in the same way: they have no page of their
+# own on the Tools screen, so a flow is the only way the lab runs them.
+RFDIFFUSION = Card(
+    "rfdiffusion", "RFdiffusion", "design a binder backbone, then its sequence",
+    tool="rfdiffusion",
+    inputs=[Port("target", "target", ["target"])],
+    # Same two ways out as BindCraft2, and for the same reason: RFdiffusion keeps the target in
+    # the structure it writes, so a design is a complex already, and ProteinMPNN is what gives it
+    # a sequence to dock.
+    outputs=[Port("complexes", "designed complexes", ["complexes"]),
+             Port("sequences", "design sequences", ["sequences"], sized=True)],
+    settings=[
+        Setting("designs", "Backbones to generate", "number", 10, needed=True,
+                why="each is a separate diffusion, and the whole run is this many"),
+        Setting("seqs_per_backbone", "Sequences per backbone", "number", 8, needed=True,
+                why="ProteinMPNN designs this many for each backbone, and the best is kept"),
+        Setting("gpu", "Card", "choice", "auto",
+                choices=["auto", "a100", "a40", "rtx"], optional=True),
+        Setting("walltime", "Walltime", "text", "12:00:00", optional=True),
+        # RFdiffusion's own knobs. The defaults are the ones its binder-design example uses, and
+        # changing them changes what the diffusion does rather than how it is run.
+        Setting("noise_scale", "Noise scale", "number", 0, optional=True, advanced=True,
+                why="0 is RFdiffusion's own. Lower makes designs more conservative"),
+        Setting("diffuser_T", "Diffusion steps", "number", 50, optional=True, advanced=True,
+                why="fewer is faster and rougher"),
+        Setting("ckpt", "Checkpoint", "choice", "",
+                choices=["", "Complex_base_ckpt.pt", "Complex_beta_ckpt.pt"],
+                optional=True, advanced=True, why="empty takes the binder-design default"),
+        Setting("mpnn_relax", "Relax each design before scoring", "yesno", False,
+                optional=True, advanced=True, why="slower, and the more considered sequence"),
+        Setting("partition", "Partition", "text", "", optional=True, advanced=True),
+        Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
+    ],
+    ready=False,
+    note="Designs come out placed on the target. Not yet startable from a flow: ProteinMPNN's "
+         "half of it is still packed in dl_binder_design.zip.")
+
+BOLTZGEN = Card(
+    "boltzgen", "BoltzGen", "generate a binder against the target",
+    tool="boltzgen",
+    inputs=[Port("target", "target", ["target"])],
+    outputs=[Port("complexes", "designed complexes", ["complexes"]),
+             Port("sequences", "design sequences", ["sequences"], sized=True)],
+    settings=[
+        # The protocol is the whole of what this tool is asked: a peptide and a nanobody against
+        # the same target are different runs of the same model, not different settings of one.
+        Setting("protocol", "What to design", "choice", "protein-anything",
+                choices=["protein-anything", "peptide-anything", "nanobody-anything",
+                         "antibody-anything", "protein-small_molecule", "protein-redesign"],
+                needed=True, why="the model's own protocols; the binder kind is chosen here"),
+        Setting("designs", "Designs to generate", "number", 10, needed=True),
+        # 16 GB is not enough: upstream reports running out of memory on a modest target, and on
+        # the analysis step at a hundred designs. So the small cards are not offered here.
+        Setting("gpu", "Card", "choice", "a100", choices=["a100", "a40"], optional=True,
+                why="BoltzGen needs 40 GB or more; the smaller cards run out"),
+        Setting("walltime", "Walltime", "text", "12:00:00", optional=True),
+        Setting("cyclic", "Cyclic peptide", "yesno", False, optional=True, advanced=True,
+                why="peptide protocols only"),
+        Setting("sampling_steps", "Sampling steps", "number", 0, optional=True, advanced=True,
+                why="0 takes the protocol's own"),
+        Setting("fold", "Fold and score each design", "yesno", True, optional=True, advanced=True,
+                why="the ranking comes from this; off leaves designs unranked"),
+        Setting("partition", "Partition", "text", "", optional=True, advanced=True),
+        Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
+    ],
+    ready=False,
+    note="Generates binders against a target of any kind - protein, peptide, nucleic acid or "
+         "small molecule. Not yet startable from a flow: its driver is still being written.")
+
 APTAMER = Card(
     "aptamer", "HOPE-Aptamer", "design and fold an aptamer",
     tool="aptamer",
@@ -305,7 +375,7 @@ HOPEMD = Card(
         Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ])
 
-CARDS = (TARGET, PIPELINES, BINDCRAFT, APTAMER, ADCP, HOPEMD)
+CARDS = (TARGET, PIPELINES, BINDCRAFT, RFDIFFUSION, BOLTZGEN, APTAMER, ADCP, HOPEMD)
 BY_KEY = {c.key: c for c in CARDS}
 
 
