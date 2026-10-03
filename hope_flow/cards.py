@@ -279,8 +279,12 @@ RFDIFFUSION = Card(
         Setting("walltime", "Walltime", "text", "12:00:00", optional=True),
         # RFdiffusion's own knobs. The defaults are the ones its binder-design example uses, and
         # changing them changes what the diffusion does rather than how it is run.
+        # Not RFdiffusion's own default, which is 1: the binder-design example lowers it to 0, and
+        # that is what makes the backbones worth giving a sequence to. Raising it is how to ask
+        # for more varied designs, at the cost of how many of them hold up.
         Setting("noise_scale", "Noise scale", "number", 0, optional=True, advanced=True,
-                why="0 is RFdiffusion's own. Lower makes designs more conservative"),
+                why="0 is what the binder-design example uses. Higher is more varied and fewer "
+                    "of them fold"),
         Setting("diffuser_T", "Diffusion steps", "number", 50, optional=True, advanced=True,
                 why="fewer is faster and rougher"),
         Setting("ckpt", "Checkpoint", "choice", "",
@@ -314,8 +318,13 @@ BOLTZGEN = Card(
         Setting("walltime", "Walltime", "text", "12:00:00", optional=True),
         Setting("cyclic", "Cyclic peptide", "yesno", False, optional=True, advanced=True,
                 why="peptide protocols only"),
-        Setting("sampling_steps", "Sampling steps", "number", 0, optional=True, advanced=True,
-                why="0 takes the protocol's own"),
+        # The key is still sampling_steps because saved flows carry it under that name, and
+        # renaming it would quietly drop the setting out of every flow already drawn. What it is
+        # is BoltzGen's --step_scale, which scales the diffusion step rather than counting steps,
+        # and the label says so: the old one read as a number of steps and it is not one.
+        Setting("sampling_steps", "Step scale", "number", 0, optional=True, advanced=True,
+                why="0 takes the protocol's own. It scales the diffusion step, and is not a "
+                    "count of steps"),
         Setting("fold", "Fold and score each design", "yesno", True, optional=True, advanced=True,
                 why="the ranking comes from this; off leaves designs unranked"),
         Setting("partition", "Partition", "text", "", optional=True, advanced=True),
