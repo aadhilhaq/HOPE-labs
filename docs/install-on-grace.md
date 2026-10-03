@@ -167,9 +167,16 @@ for Prime MM-GBSA. Each is a mail to help@hprc.tamu.edu after registering with t
 
 ## RFdiffusion and BoltzGen
 
-These two are not on the Tools screen and have no page of their own: they are cards on the canvas,
-and a flow is how the lab runs them. Both are installed in the group space, and neither needs
-anything from you if you work there.
+These two are the only tools whose page is not inside the install. Neither upstream project ships
+one, so the lab's is in HOPE Labs itself, under `hope_labs/pages`, and the Tools screen starts it
+from the HOPE Labs checkout rather than from the tool. They are cards on the canvas as well, and a
+page and a card queue the same run through the same code. Both are installed in the group space,
+and neither needs anything from you if you work there.
+
+Because the page belongs to HOPE Labs, a copy of either tool elsewhere is still driven by the lab's
+page, which is handed the install path. A HOPE Labs checkout somewhere other than the group space is
+named with `HOPELABS_INSTALL`, and the Python that runs the page with `HOPELABS_PYTHON`: the page
+needs Python 3.8 or newer, and a login node's own `python3` here is 3.6.
 
 **RFdiffusion with ProteinMPNN.** `ML_programs/RFdiffusion` holds the code and its nine checkpoints,
 and `envs/SE3nv` is its environment, a Python 3.9 with torch. `ML_programs/dl_binder_design` is the

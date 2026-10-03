@@ -215,6 +215,24 @@ def _pipelines(node, flow, carried, flow_dir, record, say=print):
 # two have nothing to hand to, so this writes the job. Both end by writing designs.json, which is
 # the one thing the next card reads; the shape of it is documented in adapters.py.
 
+#: What a design job asks Slurm for beyond what the card says: cores, and memory in GB. Not in the
+#: card because neither is a choice anybody should have to make, and here rather than in the two
+#: drivers because the tools' own pages show what will be asked before anything is queued, and a
+#: page quoting a number the job does not use is worse than one that says nothing.
+#:
+#: BoltzGen gets the larger allowance: upstream reports it running out on a modest target, and
+#: again in its analysis step at a hundred designs.
+DESIGN_RESOURCES = {
+    "rfdiffusion": {"cpus": 8, "mem": 48},
+    "boltzgen": {"cpus": 8, "mem": 64},
+}
+
+#: Which partition a card is in on Grace. `gpu` holds the a100s, the t4s and the rtx cards; the
+#: a40s are a partition of their own. A job that asks for an a40 in `gpu` is refused outright by
+#: sbatch, so the partition follows the card unless the person names one.
+DEFAULT_PARTITION = "gpu"
+GPU_PARTITION = {"a40": "gpu-a40"}
+
 JOB = """#!/bin/bash
 #SBATCH --job-name={name}
 #SBATCH --partition={partition}
@@ -239,11 +257,24 @@ exit $status
 """
 
 
+#: Write the job and do not queue it. Both of these tools want a large card for hours, so there
+#: has to be a way to exercise everything up to sbatch: the target fetched, the plan written, the
+#: script written, the refusals raised. Without one, the only way to try a change to either
+#: driver is to spend an A100 on it.
+#:
+#: A flag rather than an argument because drivers.submit's shape is the runner's, and every driver
+#: shares it. Set it around the call and put it back; the page does, under its own lock.
+DRY_RUN = False
+
+
 def _queue(where, script, say):
     """Write a job script into the run folder, queue it, and give back its id."""
     path = os.path.join(where, "job.sbatch")
     with open(path, "w") as fh:
         fh.write(script)
+    if DRY_RUN:
+        say("   | dry run: wrote %s and queued nothing" % path)
+        return ""
     done = subprocess.run(["sbatch", "--parsable", path], cwd=where, capture_output=True, text=True)
     out = ((done.stdout or "") + (done.stderr or "")).strip()
     if done.returncode != 0:
@@ -255,17 +286,28 @@ def _queue(where, script, say):
     return found.group(1)
 
 
-def _design_job(node, flow, carried, card, body, say, cpus=8, mem=48, hf_home='"$OUT/cache/hf"'):
+def gpu_asked(settings):
+    """The card a job will be given, and the partition it has to be asked for in.
+
+    Both tools want a large card and `auto` means the largest there is, so it resolves to an a100
+    rather than being handed to Slurm, which has no idea what either tool needs.
+    """
+    gpu = str((settings or {}).get("gpu") or "a100")
+    if gpu == "auto":
+        gpu = "a100"
+    return gpu, str((settings or {}).get("partition") or GPU_PARTITION.get(gpu, DEFAULT_PARTITION))
+
+
+def _design_job(node, flow, carried, card, body, say, hf_home='"$OUT/cache/hf"'):
     """The parts of a design job that do not differ between the two tools."""
     s = node.settings
     where = _unique(_run_root(node, card), "%s_%s" % (flow.name, node.id))
     os.makedirs(os.path.join(where, "cache"), exist_ok=True)
-    gpu = str(s.get("gpu") or "a100")
-    if gpu == "auto":
-        gpu = "a100"
+    gpu, partition = gpu_asked(s)
     script = JOB.format(
-        name="%s_%s" % (card, node.id), partition=str(s.get("partition") or "gpu"),
-        gpu=gpu, cpus=cpus, mem=mem, walltime=str(s.get("walltime") or "12:00:00"),
+        name="%s_%s" % (card, node.id), partition=partition, gpu=gpu,
+        cpus=DESIGN_RESOURCES[card]["cpus"], mem=DESIGN_RESOURCES[card]["mem"],
+        walltime=str(s.get("walltime") or "12:00:00"),
         out=where, hf_home=hf_home,
         account=("#SBATCH --account=%s\n" % s["account"]) if s.get("account") else "",
         body=body(where))
@@ -346,9 +388,9 @@ def _boltzgen(node, flow, carried, flow_dir, record, say=print):
                 % (shlex.quote(os.path.join(INSTALLS["boltzgen"], "bin", "python")),
                    shlex.quote(helper), shlex.quote(os.path.join(where, "plan.json"))))
 
-    # BoltzGen wants 40 GB of card: upstream reports running out of memory on a modest target at
-    # 16 GB, and again in its analysis step at a hundred designs.
-    return _design_job(node, flow, carried, "boltzgen", body, say, cpus=8, mem=64,
+    # HF_HOME is the group's cache rather than the run's: the weights are 10 GB and a compute node
+    # cannot fetch them, so every run reads the one copy.
+    return _design_job(node, flow, carried, "boltzgen", body, say,
                        hf_home=shlex.quote(BOLTZGEN_CACHE))
 
 
