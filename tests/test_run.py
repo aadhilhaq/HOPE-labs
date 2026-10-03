@@ -185,7 +185,21 @@ try:
     run.step(where, "m", say=lambda *a: None)
     ok(st.State.read(where).state_of("m") == st.STOPPED,
        "and the card after it stops rather than waiting for ever")
+
+    # carrying on, once whatever stopped it has been dealt with
     drivers.BY_CARD["bindcraft"] = tool_driver
+    before = len(STARTED)
+    where2, again = run.resume(where, say=lambda *a: None)
+    ok("b" in again, "the card that failed is queued again: %s" % sorted(again))
+    rec = st.State.read(where)
+    ok(rec.state_of("p") == st.DONE, "while the card that finished is left alone")
+    ok(not [s for s in STARTED[before:] if s[0] == "p"], "and its tool is not run a second time")
+    run.step(where, "b", say=lambda *a: None)
+    rec = st.State.read(where)
+    ok(rec.state_of("b") == st.QUEUED, "and this time it starts: %s" % rec.card("b")["note"])
+    ok(len(STARTED) > before, "something new was started")
+    _, nothing = run.resume(where, say=lambda *a: None)
+    ok(nothing == {}, "resuming a flow whose cards are all queued or done starts nothing")
 finally:
     shutil.rmtree(work, ignore_errors=True)
 

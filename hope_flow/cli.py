@@ -94,6 +94,15 @@ def cmd_step(a):
     return 0 if run.step(a.flowdir, a.card) not in ("unknown",) else 2
 
 
+def cmd_resume(a):
+    """Carry on a flow that stopped, leaving what finished alone."""
+    where, queued = run.resume(a.flowdir, say=lambda *m: print(" ", *m))
+    print(where)
+    for nid, jid in queued.items():
+        print("  %s waits as job %s" % (nid, jid))
+    return 0
+
+
 def cmd_stop(a):
     """Cancel what this flow still has in the queue. What has finished is left alone."""
     from . import queue
@@ -153,6 +162,10 @@ def main(argv=None):
     p.add_argument("flowdir")
     p.add_argument("card")
     p.set_defaults(fn=cmd_step)
+
+    r = sub.add_parser("resume", help="carry on a flow that stopped")
+    r.add_argument("flowdir")
+    r.set_defaults(fn=cmd_resume)
 
     k = sub.add_parser("stop", help="cancel what is still queued")
     k.add_argument("flowdir")

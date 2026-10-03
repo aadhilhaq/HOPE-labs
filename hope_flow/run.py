@@ -320,3 +320,69 @@ def _card_notes(node, target_settings, flow):
             out.append("Designs of up to %g residues cannot be docked; that link is refused."
                        % longest)
     return out
+
+
+def _step_pending(record, node_id):
+    """The step job watching this card, if one is still in the queue."""
+    jid = record.card(node_id).get("step")
+    if not jid:
+        return ""
+    state = queue.states([jid]).get(str(jid), "")
+    return str(jid) if state.startswith(("PENDING", "RUNNING", "CONFIGURING", "REQUEUED",
+                                         "SUSPENDED")) else ""
+
+
+def resume(where, say=print):
+    """Carry on a flow that stopped, from the first card that has not finished.
+
+    A flow stops for reasons that have nothing to do with the flow: a node failed under a job, a
+    queue was full, an allocation ran out overnight. What has finished is left alone - its runs
+    are on disk and cost what they cost - and everything from the first unfinished card is queued
+    again. A card that failed has its claim given back, so it is tried rather than skipped.
+    """
+    where = os.path.abspath(str(where))
+    with open(os.path.join(where, "flow.json"), encoding="utf-8") as fh:
+        flow = Flow.from_json(fh.read())
+    record = st.State.read(where)
+    refresh(flow, record)
+
+    again = []
+    for node in flow.nodes:
+        state = record.state_of(node.id)
+        if state == st.DONE:
+            continue
+        if state in (st.QUEUED, st.RUNNING):
+            # Still in the queue. Starting it again would be a second run of the same work.
+            say("%s is still %s; leaving it" % (node.id, state))
+            continue
+        # A card that has not had its turn yet may already have a step job waiting for the card
+        # before it; pressing Carry on twice is an ordinary thing to do and should not leave two
+        # behind. A card that failed or was stopped is different: its step job has already run, so
+        # it needs a new one however the old one ended.
+        if state in (st.WAITING, st.READY):
+            waiting_already = _step_pending(record, node.id)
+            if waiting_already:
+                say("%s is already waiting as job %s" % (node.id, waiting_already))
+                continue
+        st.unclaim(where, node.id)
+        record.set(node.id, state=st.WAITING, note="")
+        again.append(node.id)
+    if not again:
+        record.write()
+        say("nothing to carry on: every card has finished or is already queued")
+        return where, {}
+
+    queued = {}
+    for node in flow.nodes:
+        if node.id not in again:
+            continue
+        if not all(record.finished(u) for u in flow.upstream(node.id)):
+            continue
+        if node.card == "target":
+            rundir, _ = drivers.submit(node, flow, {}, where, record, say=say)
+            record.set(node.id, state=st.DONE, rundir=rundir, jobs=[], note="")
+            continue
+        queued[node.id] = _queue_step(where, node.id, record, dependency="")
+        say("%s queued again as job %s" % (node.id, queued[node.id]))
+    record.write()
+    return where, queued
