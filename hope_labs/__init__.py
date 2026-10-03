@@ -6,7 +6,7 @@ The tools are untouched: each is the page it always was, reached through the sam
 a person approves Duo once instead of five times.
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 #: What this build's server offers the page: the routes and the shapes they answer with. The page
 #: files say which of these they need, and the two numbers are how a launcher decides whether it
