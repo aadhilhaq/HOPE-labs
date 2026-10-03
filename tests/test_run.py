@@ -167,7 +167,7 @@ try:
     rec = st.State.read(where)
     for j in rec.card("p")["jobs"]:
         JOB_STATE[j] = "COMPLETED"
-    rec.card("p")["left"] = []                       # the design run passed nothing
+    rec.set("p", left=[])                            # the design run passed nothing
     rec.write()
     run.step(where, "a", say=lambda *a: None)
     rec = st.State.read(where)

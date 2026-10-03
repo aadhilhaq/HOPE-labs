@@ -13,6 +13,7 @@ minute of a short queue.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -29,13 +30,17 @@ def folder_for(flow, runs_root):
     return where
 
 
-def write_out(flow, where):
+def write_out(flow, where, settled=None):
     """Lay the flow's folder out. Nothing of a card's own run is put here: the tools do that."""
     os.makedirs(where, exist_ok=True)
-    for part in ("logs", "inputs", "claims"):
+    for part in ("logs", "inputs", "claims", "state"):
         os.makedirs(os.path.join(where, part), exist_ok=True)
+    doc = flow.as_json()
+    if settled:
+        doc["settled"] = dict(settled)
     with open(os.path.join(where, "flow.json"), "w", encoding="utf-8") as fh:
-        fh.write(flow.dumps())
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
     return where
 
 
@@ -51,13 +56,14 @@ def submit(flow, runs_root, python, package_root, account="", partition="", say=
     if not queue.available():
         raise RuntimeError("there is no sbatch here: a flow is queued from a login node")
 
-    where = write_out(flow, folder_for(flow, runs_root))
+    where = folder_for(flow, runs_root)
+    # What a step job needs and nobody changes afterwards goes in with the drawing, written once.
+    # Keeping it out of the record is what lets the record be one small file per card, which is
+    # what stops two step jobs writing over each other.
+    settled = {"python": str(python), "package_root": str(package_root),
+               "account": account, "partition": partition}
+    write_out(flow, where, settled)
     record = st.State.read(where)
-    record.data["flow"] = flow.name
-    record.data["python"] = str(python)
-    record.data["package_root"] = str(package_root)
-    record.data["account"] = account
-    record.data["partition"] = partition
     for node in flow.nodes:
         record.set(node.id, state=st.WAITING)
     record.write()
@@ -94,10 +100,11 @@ def _queue_step(where, node_id, record, dependency=""):
                                    record.data.get("partition") or ""))
     os.chmod(script, 0o755)
     jid = queue.submit(script, where, dependency=dependency, name="flow-%s" % node_id)
-    card = record.card(node_id)
-    card["step"] = jid
-    if card["state"] == st.WAITING:
-        record.set(node_id, state=st.READY, note="")
+    # Through set(), not by reaching into the card: only what set() is told about is written, so a
+    # change made by hand would be kept in this process and lost everywhere else.
+    was = record.state_of(node_id)
+    record.set(node_id, step=jid, state=st.READY if was == st.WAITING else None,
+               note="" if was == st.WAITING else None)
     return jid
 
 

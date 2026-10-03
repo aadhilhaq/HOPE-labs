@@ -1,10 +1,19 @@
 """What has happened to a flow, as the jobs write it down.
 
-state.json sits beside flow.json and is the only thing that changes while a flow runs. It is
-written by jobs on compute nodes, several of which can be awake at once, so every write is a
-whole new file moved into place: a reader either sees the state before a write or the state
-after it, and never half of one. Nothing reads it to decide what to do next except through
-`claim()`, which is where that decision is made atomically.
+A flow's record is a folder, `state/`, holding one small file per card, beside flow.json. Each is
+written whole and moved into place, so a reader sees a card before a write or after it and never
+half of one.
+
+One file per card rather than one for the flow, and that is not tidiness. Several step jobs are
+awake at once, and a single document meant every one of them read it, changed its own card and
+wrote the whole thing back - so two cards finishing within a few seconds of each other lost one of
+the two writes. It happened on the first real run: a card queued its tool, said so in its log, and
+the record still showed it as waiting, because the card beside it wrote afterwards from a copy
+taken before. Cards are now written one at a time and only by the jobs that have something to say
+about them, and where two jobs do write the same card they write the same thing.
+
+What does not change while a flow runs - where it came from, which Python, which account - stays
+in flow.json, written once.
 """
 from __future__ import annotations
 
@@ -25,45 +34,74 @@ def _now():
 
 
 class State:
-    """The record of one flow's run, read and written as a whole."""
+    """The record of one flow's run: a folder of small files, one for each card."""
 
-    def __init__(self, path, data=None):
-        self.path = str(path)
+    def __init__(self, folder, data=None):
+        self.folder = str(folder)
+        self.where = os.path.join(self.folder, "state")
         self.data = data if data is not None else {"version": 1, "cards": {}, "started": _now()}
+        self._changed = set()                  # the cards this process has something to say about
 
     # ---- reading and writing ---------------------------------------------
     @classmethod
     def read(cls, folder):
-        path = os.path.join(str(folder), "state.json")
+        it = cls(folder)
+        it.data = {"version": 1, "cards": {}, "started": _now()}
         try:
-            with open(path, encoding="utf-8") as fh:
-                return cls(path, json.load(fh))
-        except FileNotFoundError:
-            return cls(path)
+            names = sorted(os.listdir(it.where))
+        except OSError:
+            names = []
+        for name in names:
+            if not name.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(it.where, name), encoding="utf-8") as fh:
+                    it.data["cards"][name[:-5]] = json.load(fh)
+            except (ValueError, OSError):
+                # A half-written file should never exist, since every write is a rename, and one
+                # card that cannot be read is not worth losing the rest of the flow to.
+                it.data["cards"][name[:-5]] = {
+                    "state": WAITING, "jobs": [], "rundir": "", "changed": _now(),
+                    "note": "this card's record could not be read"}
+        # Anything settled when the flow was queued and not changed since.
+        try:
+            with open(os.path.join(it.folder, "flow.json"), encoding="utf-8") as fh:
+                it.data["settled"] = json.load(fh).get("settled") or {}
         except (ValueError, OSError):
-            # A half-written file should never exist, since every write is a rename, but a flow
-            # is not worth losing to one unreadable byte: start a fresh record and say so.
-            return cls(path, {"version": 1, "cards": {}, "started": _now(),
-                              "note": "the previous record could not be read"})
+            it.data["settled"] = {}
+        it.data.update(it.data.get("settled") or {})
+        return it
 
     def write(self):
-        """Replace the file in one step, so a reader never sees a part of it."""
-        tmp = "%s.%d.tmp" % (self.path, os.getpid())
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(self.data, fh, indent=2, sort_keys=False)
-            fh.write("\n")
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, self.path)
+        """Write the cards this process changed, each in one step, and nothing else.
+
+        Writing only what this job has something to say about is the whole point: a job that
+        rewrote every card would undo whatever another job wrote while it was working.
+        """
+        os.makedirs(self.where, exist_ok=True)
+        for nid in sorted(self._changed):
+            path = os.path.join(self.where, "%s.json" % nid)
+            tmp = "%s.%d.tmp" % (path, os.getpid())
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(self.data["cards"][nid], fh, indent=2, sort_keys=False)
+                fh.write("\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        self._changed.clear()
 
     # ---- one card --------------------------------------------------------
     def card(self, nid):
+        """One card's record. Read it freely; change it only through set(), which is what marks
+        it to be written. Reaching in here and assigning is a change this process keeps and
+        nothing else ever sees."""
         return self.data.setdefault("cards", {}).setdefault(
             nid, {"state": WAITING, "jobs": [], "rundir": "", "note": "", "changed": _now()})
 
     def set(self, nid, state=None, rundir=None, jobs=None, note=None, **more):
         """Record what became of a card. Only what is given is changed."""
         it = self.card(nid)
+        self._changed.add(nid)
         if state is not None:
             it["state"] = state
         if rundir is not None:
