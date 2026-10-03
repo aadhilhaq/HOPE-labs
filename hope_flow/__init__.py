@@ -15,5 +15,6 @@ APP = "HOPE-flow"
 LAB = "HOPE Lab"
 AUTHORS = ("Aadhil Haq",)
 PI = "Dr. Sandun Fernando"
-COPYRIGHT = ("Copyright (c) 2026, Aadhil Haq and Sandun Fernando, HOPE Lab, "
-             "Texas A&M University. All rights reserved.")
+COPYRIGHT = ("Copyright (c) 2026, Sandun Fernando, HOPE Lab, Texas A&M University. "
+             "Authored by Aadhil Haq, Samavath Mallawarachchi and Lasan Manujitha. "
+             "All rights reserved.")

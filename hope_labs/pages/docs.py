@@ -29,8 +29,9 @@ WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
 #: The lab's statement, as every one of its tools makes it. It covers the page, this module and
 #: the pages themselves: the code in front of each tool, and nothing of the tool.
-COPYRIGHT = ("Copyright (c) 2026, Aadhil Haq and Sandun Fernando, "
-             "HOPE Lab, Texas A&M University. All rights reserved.")
+COPYRIGHT = ("Copyright (c) 2026, Sandun Fernando, HOPE Lab, Texas A&M University. "
+             "Authored by Aadhil Haq, Samavath Mallawarachchi and Lasan Manujitha. "
+             "All rights reserved.")
 
 #: The sidebar, in order: (slug, title, section). The same for both tools, because the questions
 #: a person arrives with are the same ones in the same order.
