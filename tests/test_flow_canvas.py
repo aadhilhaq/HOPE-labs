@@ -23,13 +23,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-from hope_labs import canvas, cards, flow, hub, settings    # noqa: E402
+from hope_labs import canvas, hub, settings
+from hope_flow import cards, flow    # noqa: E402
 
 #: The catalogue and the flow document as the runner has them. Compared where the checkout is
 #: present, skipped where it is not, as the docs kit is.
-SIBLINGS = {"cards.py": "/scratch/group/sflab/HOPE-flow/hope_flow/cards.py",
-            "flow.py": "/scratch/group/sflab/HOPE-flow/hope_flow/flow.py"}
-
 fails, ran = [], 0
 
 
@@ -56,14 +54,10 @@ def flow_with(binder_max, links):
                        "to": port[k][2], "toPort": port[k][3]} for k in links]}
 
 
-# --- the catalogue is the runner's own file ---------------------------------
-for name, sibling in sorted(SIBLINGS.items()):
-    if os.path.isfile(sibling):
-        mine = open(os.path.join(ROOT, "hope_labs", name), "rb").read()
-        check(mine == open(sibling, "rb").read(),
-              "hope_labs/%s differs from %s; the copies are kept identical" % (name, sibling))
-    else:
-        print("note  %s is not here, so the copies were not compared" % sibling)
+# --- the canvas and the runner read one file --------------------------------
+check(canvas.cards.__file__ == cards.__file__ and canvas.flow.__file__ == flow.__file__,
+      "the canvas reads the runner's own rules, not a copy of them")
+check("hope_flow" in cards.__file__, "which live in hope_flow: %s" % cards.__file__)
 
 # --- the example is a flow, not a sketch ------------------------------------
 example = canvas.example()

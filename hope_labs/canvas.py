@@ -15,7 +15,7 @@ constant served once.
 """
 from __future__ import annotations
 
-from . import cards, flow
+from hope_flow import cards, flow
 
 #: What the Launch button gets until the part of HOPE-flow that queues a flow is installed. It is
 #: a sentence rather than a code because it reaches the person as it stands.

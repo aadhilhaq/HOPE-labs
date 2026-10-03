@@ -55,6 +55,13 @@ message means, with pictures of the page as it is. The bar along the bottom of t
 version, the copyright and who does the work; each tool's own page has its own Docs and its own bar. To change the
 pictures, `tools/docs_screenshots.py` takes them again from the running page.
 
+**Flows** is the third view: a canvas where the lab's tools are cards, linked socket to socket,
+with the target filled in once and the whole chain launched from one button. What may be linked to
+what is `hope_flow/cards.py`, which the canvas and the cluster both read, so they cannot disagree.
+`hope_flow` is the runner: one small job per card, each waiting on the one before it through a
+Slurm dependency, turning what that card left into what the next one needs. A launched flow needs
+nothing of this running — close the laptop and it carries on.
+
 **Sign out** closes the pages and the connection. Anything already queued on the cluster carries
 on without it: the launcher submits work, it does not hold it.
 
