@@ -62,6 +62,19 @@ what is `hope_flow/cards.py`, which the canvas and the cluster both read, so the
 Slurm dependency, turning what that card left into what the next one needs. A launched flow needs
 nothing of this running — close the laptop and it carries on.
 
+**The page updates itself.** The launcher is a shell: it signs in, holds one connection, and
+serves a page. That page is taken from the lab's install on Grace, so a change to it reaches
+everybody the next time they sign in rather than when they next download the launcher — which
+matters, because a tool shared once should not need sharing again for every change to it. Two
+numbers in `hope_labs/__init__.py` decide it: `PAGE_API` is what a build's server offers, and
+`PAGE_NEEDS` is what the page files require of one. A launcher too old for the install's page
+keeps its own and says so in a line, rather than serving a page whose buttons call routes it does
+not have. Untick *Take the page from the cluster* to pin the launcher to the page it was built
+with.
+
+So: changes to the page — a view, a card's settings, the wording of a refusal — need no new
+download. Changes to the server behind it do, and announce themselves.
+
 **Sign out** closes the pages and the connection. Anything already queued on the cluster carries
 on without it: the launcher submits work, it does not hold it.
 

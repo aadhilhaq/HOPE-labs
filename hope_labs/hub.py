@@ -95,7 +95,28 @@ class Hub:
         self.starting = {}                # key -> the lock held while that tool starts
         self._scratch = ""                # the person's scratch on the cluster, asked for once
         self.flows = Flows(self)          # queueing flows, and reading back how they are getting on
+        #: Where the page being served comes from: a folder taken off the cluster, or "" for the
+        #: one this launcher was built with. Set once, when the connection is made.
+        self.page_dir = ""
+        self.page_note = ""
         self._runs_cache = (0.0, [])
+
+    def use_cluster_page(self, install=""):
+        """Serve the lab's current page instead of this launcher's own, where that is possible.
+
+        Called once, after signing in. Whatever it decides, the launcher works: the page it was
+        built with is always there to fall back to.
+        """
+        from . import PAGE_API
+        where = install or self.installs.get("flow") or FLOW_INSTALL
+        self.page_dir, self.page_note = page_from_cluster(self.t, where, PAGE_API, self.say)
+        if self.page_note:
+            self.say(self.page_note)
+        return self.page_dir
+
+    def web(self):
+        """The folder the page is served out of."""
+        return self.page_dir or WEB
 
     @property
     def scratch(self):
@@ -286,10 +307,13 @@ class Hub:
         return found
 
 
-def index_page(name="index.html"):
+def index_page(name="index.html", root=""):
     """One of the launcher's pages, with the bar along its bottom filled in from the docs' credit line."""
     from . import docs, docskit
-    with open(os.path.join(WEB, name), encoding="utf-8") as fh:
+    path = os.path.join(root or WEB, name)
+    if root and not os.path.isfile(path):
+        path = os.path.join(WEB, name)
+    with open(path, encoding="utf-8") as fh:
         page = fh.read()
     return (page.replace("/*__CREDITBAR_CSS__*/", docskit.CREDITBAR_CSS.strip())
                 .replace("<!--__CREDITBAR__-->", docs.creditbar()))
@@ -334,9 +358,14 @@ def handler_for(hub):
             return query.get("t", [""])[0] == hub.token or self.headers.get("X-Token") == hub.token
 
         def _static(self, name):
-            path = os.path.realpath(os.path.join(WEB, name.lstrip("/")))
-            if not path.startswith(os.path.realpath(WEB)) or not os.path.isfile(path):
-                return self._send(404, "text/plain", b"not found")
+            root = hub.web()
+            path = os.path.realpath(os.path.join(root, name.lstrip("/")))
+            if not path.startswith(os.path.realpath(root)) or not os.path.isfile(path):
+                # A page taken off the cluster may be missing a file this launcher's own has,
+                # and the built-in one is the answer rather than a blank panel.
+                path = os.path.realpath(os.path.join(WEB, name.lstrip("/")))
+                if not path.startswith(os.path.realpath(WEB)) or not os.path.isfile(path):
+                    return self._send(404, "text/plain", b"not found")
             kind = mimetypes.guess_type(path)[0] or "application/octet-stream"
             with open(path, "rb") as handle:
                 self._send(200, kind, handle.read())
@@ -356,7 +385,7 @@ def handler_for(hub):
             url = urlparse(self.path)
             query = parse_qs(url.query)
             if url.path in ("/", "/index.html"):
-                return self._send(200, "text/html; charset=utf-8", index_page().encode("utf-8"))
+                return self._send(200, "text/html; charset=utf-8", index_page(root=hub.web()).encode("utf-8"))
             # The documentation needs no token: it is the same for everyone, holds nothing of the
             # session, and a page of it kept as a bookmark has no token to carry.
             if url.path == "/docs" or url.path.startswith("/docs/"):
@@ -364,7 +393,7 @@ def handler_for(hub):
             # Each tool opens in a tab of its own. The tab comes here first, starts the tool and
             # shows the wait, then goes on to the tool's own page.
             if url.path == "/tool":
-                return self._send(200, "text/html; charset=utf-8", index_page("tool.html").encode("utf-8"))
+                return self._send(200, "text/html; charset=utf-8", index_page("tool.html", hub.web()).encode("utf-8"))
             if url.path.startswith("/static/"):
                 return self._static(url.path[len("/static/"):])
             if not self._allowed(query):
@@ -595,3 +624,92 @@ class Flows:
         if status != 0:
             raise RuntimeError(said(out, err) or "the flow could not be stopped")
         return {"stopped": (out or "").strip()}
+
+
+# --- the page the launcher serves --------------------------------------------------------------
+# The launcher is a shell: it signs in, holds one connection, and serves a page. The page was
+# always the one built into it, which meant every change to the page - a new view, a reworded
+# refusal, a field on a card - needed everybody to download a launcher again. Sharing a tool
+# should not mean sharing it repeatedly.
+#
+# So the page is taken from the lab's install on the cluster when that install's page says it can
+# work against this launcher's server, and from the build when it cannot. The two numbers that
+# decide it are in __init__.py. A launcher that is too old to serve the newer page keeps its own
+# and says so in one line, rather than serving a page whose buttons call routes it does not have.
+
+PAGE_CACHE = os.path.join(os.path.expanduser("~"), ".hope_labs_page")
+PAGE_FILES = ("index.html", "app.js", "flow.js", "style.css", "tool.html", "tool.js")
+
+
+def page_from_cluster(transport, install, provides, say=None):
+    """Fetch the install's page into a folder on this computer. Returns (folder, what to say).
+
+    Fails safe in every direction: anything unreadable, anything missing, any version this
+    launcher is too old for, and the answer is the page this launcher was built with.
+    """
+    say = say or (lambda *a: None)
+    try:
+        import paramiko
+        sftp = paramiko.SFTPClient.from_transport(transport)
+    except Exception as why:                                    # noqa: BLE001
+        return "", "the page on the cluster could not be reached (%s); using this launcher's own" % why
+    try:
+        needs, version = _page_version(sftp, install)
+        if needs is None:
+            return "", ""                                       # no install to read; nothing to say
+        if needs > provides:
+            return "", ("HOPE Labs %s on the cluster needs a newer launcher than this one. "
+                        "This launcher's own page is being used; download %s to get the rest."
+                        % (version or "there", version or "the current release"))
+        where = os.path.join(PAGE_CACHE, re.sub(r"[^A-Za-z0-9_.-]", "_", install))
+        os.makedirs(where, exist_ok=True)
+        got = 0
+        for name in PAGE_FILES:
+            try:
+                sftp.get("%s/hope_labs/web/%s" % (install, name), os.path.join(where, name))
+                got += 1
+            except IOError:
+                continue                                        # a page file this install lacks
+        if got < 3:
+            return "", ""                                       # not a page; keep the built-in one
+        _page_docs(sftp, install, where)
+        say("page %s from the cluster" % (version or ""))
+        return where, ""
+    except Exception as why:                                    # noqa: BLE001
+        return "", "the page on the cluster could not be read (%s); using this launcher's own" % why
+    finally:
+        try:
+            sftp.close()
+        except Exception:                                       # noqa: BLE001
+            pass
+
+
+def _page_version(sftp, install):
+    """(the server API that install's page needs, its version), or (None, "") when there is none."""
+    try:
+        with sftp.open("%s/hope_labs/__init__.py" % install) as fh:
+            text = fh.read().decode("utf-8", "replace")
+    except IOError:
+        return None, ""
+    needs = re.search(r"^PAGE_NEEDS\s*=\s*(\d+)", text, re.M)
+    version = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.M)
+    # An install from before these existed served a page this launcher's server can read, since
+    # that is the server it had; treat it as the first contract rather than refusing it.
+    return (int(needs.group(1)) if needs else 1), (version.group(1) if version else "")
+
+
+def _page_docs(sftp, install, where):
+    """The documentation beside the page, so it is as current as the page is."""
+    for part in ("docs/pages", "docs/img"):
+        here = os.path.join(where, *part.split("/"))
+        os.makedirs(here, exist_ok=True)
+        try:
+            names = sftp.listdir("%s/hope_labs/web/%s" % (install, part))
+        except IOError:
+            continue
+        for name in names[:200]:
+            try:
+                sftp.get("%s/hope_labs/web/%s/%s" % (install, part, name),
+                         os.path.join(here, name))
+            except IOError:
+                continue

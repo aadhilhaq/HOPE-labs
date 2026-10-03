@@ -230,6 +230,7 @@ def _unanswered(node):
     all a person has to do is agree with it - but they have to agree with it.
     """
     bad = []
+    bad.extend(_unknown_families(node))
     for field in node.kind.settings:
         if not field.needed:
             continue
@@ -248,6 +249,23 @@ def _unanswered(node):
             bad.append("%s: %r is not one of the choices for %s"
                        % (node.kind.name, value, field.label.lower()))
     return bad
+
+
+def _unknown_families(node):
+    """Linker families named on a card that the pipelines would not recognise.
+
+    Caught here rather than by the run, because a misspelt family is found only when the design
+    job reaches the joining step, which is hours in.
+    """
+    named = str(node.settings.get("sweep_families") or "").strip()
+    if not named:
+        return []
+    odd = [f.strip() for f in named.replace(";", ",").split(",")
+           if f.strip() and f.strip() not in cards.LINKER_FAMILIES]
+    if not odd:
+        return []
+    return ["%s: %s is not a linker family. The ones there are: %s"
+            % (node.kind.name, ", ".join(odd), ", ".join(cards.LINKER_FAMILIES))]
 
 
 def _target_problems(s):

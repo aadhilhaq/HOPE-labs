@@ -246,3 +246,36 @@ check(any(s.key == "report" for s in _md.settings),
 check(len([s for s in _md.settings if s.advanced]) >= 10,
       "the simulation offers too little behind the fold: %d"
       % len([s for s in _md.settings if s.advanced]))
+
+# --- the linker families, against the pipelines' own list --------------------
+# The names are copied into cards.py because the canvas runs on a laptop where hope_core is not
+# installed. A copy drifts, and a family that has been renamed would be offered on the card and
+# refused by the run hours later, so the two are held together wherever the pipelines are present.
+_PIPELINES = "/scratch/group/sflab/HOPE-pipelines"
+if os.path.isdir(_PIPELINES):
+    _was = list(sys.path)
+    sys.path.insert(0, _PIPELINES)
+    try:
+        from hope_core.linker_choice import FAMILY_NOTES as _THEIRS      # noqa: E402
+        check(set(_THEIRS) == set(cards.LINKER_FAMILIES),
+              "the linker families on the card and in the pipelines differ: card only %s, "
+              "pipelines only %s"
+              % (sorted(set(cards.LINKER_FAMILIES) - set(_THEIRS)),
+                 sorted(set(_THEIRS) - set(cards.LINKER_FAMILIES))))
+    except ImportError as _why:
+        print("note  the pipelines could not be imported, so the families were not compared (%s)"
+              % _why)
+    finally:
+        sys.path[:] = _was
+else:
+    print("note  the pipelines are not on this machine, so the families were not compared")
+
+_pipe = cards.BY_KEY["pipelines"]
+check(any(s.key == "anchor_linkers" for s in _pipe.settings),
+      "the linker strategy cannot be set from the card")
+for _key in ("anchor_linkers", "linker_sweep", "sweep_families"):
+    _s = next(s for s in _pipe.settings if s.key == _key)
+    check(_s.advanced and not _s.needed,
+          "%s should sit behind More settings and not be demanded" % _key)
+    check("loop" in _s.why.lower() or "families" in _s.why.lower(),
+          "%s does not say where it applies: %r" % (_key, _s.why))

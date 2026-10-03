@@ -262,6 +262,13 @@ class App:
         self.verbose = tk.BooleanVar(value=False)
         ttk.Checkbutton(root, text="Show technical details", variable=self.verbose,
                         command=self._replay).pack(anchor="w", padx=12)
+        # On by default: the lab's install is where the page is kept up to date, and a person who
+        # was given this programme once should not need to be given it again for every change to
+        # it. Off serves the page this launcher was built with, which is what to do if a change on
+        # the cluster ever makes trouble.
+        self.cluster_page = tk.BooleanVar(value=True)
+        ttk.Checkbutton(root, text="Take the page from the cluster, so it stays current",
+                        variable=self.cluster_page).pack(anchor="w", padx=12)
         ttk.Label(root, text=credit(), foreground="#5f7070", wraplength=660,
                   justify="left").pack(anchor="w", padx=10, pady=(4, 8))
 
@@ -449,6 +456,10 @@ class App:
                 for key in sorted(installs):
                     self.say("  %s: %s" % (key, installs[key]))
             self.hub = hubmod.Hub(self.t, user=user, host=node, say=self.say, installs=installs)
+            # The page comes from the lab's install where it can, so a change to the page reaches
+            # everybody the next time they sign in rather than when they next download this.
+            if self.cluster_page.get():
+                self.hub.use_cluster_page()
             want = clusters.suggested_port(user)
             self.httpd, self.url = hubmod.serve(self.hub, port=want)
             got = self.httpd.server_address[1]

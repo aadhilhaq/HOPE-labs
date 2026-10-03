@@ -32,6 +32,27 @@ PIPELINE_LABELS = (
     "tetramer  (160,000 tetrapeptides, single pass)",
 )
 
+#: The linker families the design pipelines can build a join from, copied from
+#: hope_core/linker_choice.py (FAMILY_NOTES) with its own one-line descriptions. Copied because
+#: this is read on a laptop, where that package is not installed, and the canvas has to be able to
+#: say what a name means before anything reaches the cluster.
+#:
+#: Only the two loop pipelines use them. The single-pass ones join with the plain Gly/Ser ladder
+#: whatever is asked for here, and the pipeline says so in its log rather than silently obeying.
+LINKER_FAMILIES = {
+    "flexible": "bends freely, the safe default",
+    "flexShort": "the same idea with less bulk, for a small gap",
+    "helixRigid": "a rigid helix, holding the two ends apart",
+    "ppiiAP": "rigid and extended: reaches furthest per residue",
+    "ppiiPT": "the same, more soluble",
+    "turn": "doubles back over a short distance",
+    "polar": "dissolves well, and does not fold onto the site",
+    "acidic": "negatively charged, so it repels itself and stays extended",
+    "basic": "positively charged, against an acidic site",
+    "xten": "unstructured and long, resisting proteases and aggregation",
+    "anchorDerived": "made of the anchors' own residues",
+}
+
 #: The longest peptide ADCP will take (adcp_dock/peptide.py, MAX_LENGTH). A design longer than
 #: this cannot be docked, so an edge carrying sequences into docking is refused when the binder
 #: length being asked for is above it. The number lives here as well because the canvas has to
@@ -191,6 +212,19 @@ PIPELINES = Card(
                 advanced=True, why="changes which peptides are designed"),
         Setting("hopepe", "Judge practicality as well as binding", "yesno", True, optional=True,
                 advanced=True),
+        # How the pieces are joined. Only the loop pipelines reach the chooser at all, which is
+        # why each of these says so: a setting that is quietly ignored is worse than one that is
+        # not offered.
+        Setting("anchor_linkers", "Linker strategy", "choice", "",
+                choices=["", "off", "prefer", "compete"], optional=True, advanced=True,
+                why="empty keeps the pipeline's own. off joins with the plain Gly/Ser ladder; "
+                    "prefer and compete choose a linker by what it is, using the anchors' own "
+                    "residues where they already fill the gap. Loop pipelines only"),
+        Setting("linker_sweep", "Try several linker families", "yesno", False, optional=True,
+                advanced=True, why="builds a candidate from each family and scores them. "
+                                   "Loop pipelines only"),
+        Setting("sweep_families", "Families to try", "text", "", optional=True, advanced=True,
+                why="comma separated, from: " + ", ".join(LINKER_FAMILIES)),
         Setting("cpus", "Cores", "number", 0, optional=True, advanced=True,
                 why="0 keeps the pipeline's own"),
         Setting("partition", "Partition", "text", "", optional=True, advanced=True),
