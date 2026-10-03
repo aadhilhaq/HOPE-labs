@@ -135,10 +135,22 @@ class State:
                          "state": it["state"], "jobs": it["jobs"], "rundir": it["rundir"],
                          "note": it["note"], "changed": it["changed"]})
         done = sum(1 for r in rows if r["state"] == DONE)
-        bad = [r for r in rows if r["state"] in (FAILED, STOPPED)]
+        # A flow somebody stopped has not failed, and telling them it did would be wrong twice
+        # over: it says something went wrong, and it hides the one that actually did when a flow
+        # holds both.
+        broken = [r for r in rows if r["state"] == FAILED]
+        halted = [r for r in rows if r["state"] == STOPPED]
+        if broken:
+            state = FAILED
+        elif done == len(rows):
+            state = DONE
+        elif halted and not any(r["state"] in (QUEUED, RUNNING, READY, WAITING) for r in rows):
+            state = STOPPED
+        else:
+            state = RUNNING
+        first = (broken or halted or [{"note": ""}])[0]
         return {"name": flow.name, "cards": rows, "done": done, "of": len(rows),
-                "state": (FAILED if bad else DONE if done == len(rows) else RUNNING),
-                "note": bad[0]["note"] if bad else ""}
+                "state": state, "note": first["note"]}
 
 
 def claim(folder, nid):

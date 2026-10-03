@@ -135,8 +135,7 @@ def step(where, node_id, say=print):
     Returns a short word saying what it did, which is what the job's log is for.
     """
     where = os.path.abspath(str(where))
-    with open(os.path.join(where, "flow.json"), encoding="utf-8") as fh:
-        flow = Flow.from_json(fh.read())
+    flow = _flow_in(where)
     record = st.State.read(where)
     node = flow.node(node_id)
     if node is None:
@@ -339,6 +338,23 @@ def _step_pending(record, node_id):
                                          "SUSPENDED")) else ""
 
 
+def _flow_in(where):
+    """The flow in this folder, or a sentence saying why there is not one.
+
+    A path that is not a flow is the ordinary mistake - a run folder of one of the tools, or a
+    folder that has been tidied away - and it deserves an answer rather than a traceback, because
+    the answer reaches a person through the launcher's page.
+    """
+    path = os.path.join(str(where), "flow.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return Flow.from_json(fh.read())
+    except FileNotFoundError:
+        raise ValueError("there is no flow in %s: it holds no flow.json" % where)
+    except (ValueError, OSError) as why:
+        raise ValueError("the flow in %s could not be read: %s" % (where, why))
+
+
 def resume(where, say=print):
     """Carry on a flow that stopped, from the first card that has not finished.
 
@@ -348,8 +364,7 @@ def resume(where, say=print):
     again. A card that failed has its claim given back, so it is tried rather than skipped.
     """
     where = os.path.abspath(str(where))
-    with open(os.path.join(where, "flow.json"), encoding="utf-8") as fh:
-        flow = Flow.from_json(fh.read())
+    flow = _flow_in(where)
     record = st.State.read(where)
     refresh(flow, record)
 

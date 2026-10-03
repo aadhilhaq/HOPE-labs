@@ -175,7 +175,16 @@ def main(argv=None):
     if not getattr(a, "fn", None):
         ap.print_help()
         return 2
-    return a.fn(a)
+    try:
+        return a.fn(a)
+    except (ValueError, RuntimeError) as why:
+        # These carry a sentence meant for a person, and they reach one: the launcher shows what
+        # this prints. A traceback here would be shown instead, and says nothing anybody can act on.
+        print(str(why), file=sys.stderr)
+        return 2
+    except FileNotFoundError as why:
+        print("%s: %s" % (why.strerror or "not found", why.filename or ""), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
