@@ -173,7 +173,8 @@ def _pipelines(node, flow, carried, flow_dir, record, say=print):
     for key in ("rounds", "cpus", "mem", "nodes", "partition", "account", "library_size",
                 "n_constructs", "min_construct_length", "max_construct_length", "adcp",
                 "mmgbsa", "colabfold", "scout", "hopepe", "pose_viewer", "ph", "protein_prep",
-                "exhaustiveness", "n_mmgbsa", "adcp_replicas", "adcp_steps", "rerank_engine"):
+                "exhaustiveness", "n_mmgbsa", "adcp_replicas", "adcp_steps", "rerank_engine",
+                "anchor_linkers", "linker_sweep", "sweep_families"):
         value = s.get(key)
         if value in (None, ""):
             continue
