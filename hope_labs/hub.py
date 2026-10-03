@@ -22,6 +22,8 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from . import canvas
+from . import settings
 from . import tools as catalogue
 from . import tunnel
 
@@ -340,6 +342,14 @@ def handler_for(hub):
                     return self._json(hub.state())
                 if url.path == "/api/runs":
                     return self._json({"runs": hub.runs(refresh=query.get("refresh", [""])[0] == "1")})
+                # The canvas: the cards it draws from, the flow it starts from, and the flows
+                # kept on this computer. Behind the token like everything else under /api.
+                if url.path == "/api/flow/cards":
+                    return self._json(canvas.catalogue())
+                if url.path == "/api/flow/example":
+                    return self._json(canvas.example())
+                if url.path == "/api/flow/saved":
+                    return self._json({"flows": settings.flows()})
             except Exception as exc:                            # noqa: BLE001
                 traceback.print_exc()
                 return self._json({"error": str(exc)}, 500)
@@ -360,6 +370,16 @@ def handler_for(hub):
                 if url.path == "/api/stop":
                     hub.stop(body.get("tool", ""))
                     return self._json(hub.state_of(body.get("tool", "")))
+                # The canvas posts the flow as it stands and is told what is wrong with it, so the
+                # page and the cluster are reading one answer rather than each their own.
+                if url.path == "/api/flow/check":
+                    return self._json(canvas.check(body.get("flow") or {}))
+                if url.path == "/api/flow/save":
+                    return self._json({"flows": settings.flow_save(body.get("flow") or {})})
+                if url.path == "/api/flow/delete":
+                    return self._json({"flows": settings.flow_delete(body.get("name", ""))})
+                if url.path == "/api/flow/launch":
+                    return self._json(canvas.launch(body.get("flow") or {}))
             except Exception as exc:                            # noqa: BLE001
                 return self._json({"error": str(exc)}, 400)
             self._send(404, "text/plain", b"not found")

@@ -31,6 +31,7 @@
   </span>
 
   <button class="ritem on" data-view="tools"><span class="nm">Tools</span></button>
+  <button class="ritem" data-view="flow"><span class="nm">Flows</span></button>
   <button class="ritem" data-view="runs"><span class="nm">Results</span></button>
 
   <div class="rlabel">The tools</div>
@@ -62,6 +63,48 @@
   </section>
 
 
+  <!-- ============================ the canvas ============================ -->
+  <section id="view-flow" hidden style="display:none;flex-direction:column;min-height:0;flex:1">
+    <header class="top">
+      <h1>Flows</h1>
+      <span class="why">draw the chain once, fill in the target, launch the whole of it</span>
+      <span class="spacer"></span>
+      <span class="search" id="namebox">
+        <input id="flowname" placeholder="Name this flow" autocomplete="off" spellcheck="false">
+      </span>
+      <select id="flowsaved" class="pick" title="A flow kept on this computer"></select>
+      <button class="btn sm" id="flowsave">Save</button>
+      <button class="btn sm" id="flowforget" disabled>Forget</button>
+      <button class="btn sm" id="flowexample">Start from an example</button>
+      <button class="btn sm" id="flowclear">Clear</button>
+    </header>
+
+    <div class="flowwrap">
+      <aside class="palette">
+        <div class="rlabel pl">The cards</div>
+        <div id="palette"></div>
+        <p class="phint">Click a card to put it on the canvas, or drag it there. Drag from an
+          output socket on the right of a card to an input socket on the left of another to link
+          them; click a link to take it out.</p>
+      </aside>
+
+      <div class="canvasbox">
+        <div class="canvasgrid" id="canvasgrid">
+          <div class="canvas" id="canvas">
+            <svg class="wires" id="wires"></svg>
+          </div>
+        </div>
+        <div class="probbar">
+          <div class="probs" id="problems"></div>
+          <button class="btn pri" id="flowlaunch" disabled>Launch the flow</button>
+        </div>
+      </div>
+
+      <aside class="panel" id="panel"></aside>
+    </div>
+  </section>
+
+
   <!-- ============================ results ============================ -->
   <section id="view-runs" hidden style="display:none;flex-direction:column;min-height:0;flex:1">
     <header class="top">
@@ -80,5 +123,6 @@
 
 <!--__CREDITBAR__-->
 <script src="/static/app.js"></script>
+<script src="/static/flow.js"></script>
 </body>
 </html>

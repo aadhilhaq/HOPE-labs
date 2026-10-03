@@ -148,12 +148,20 @@ function paintTools() {
 }
 
 /* ------------------------------------------------------------------ views */
+/* The rail's buttons name the view they show; the sections are flex columns, so each is hidden by
+   display as well, which [hidden] alone would not do against it. */
+const VIEWS = { tools: "view-tools", flow: "view-flow", runs: "view-runs" };
+
 function show(view) {
   VIEW = view;
-  $("view-tools").hidden = view !== "tools";
-  $("view-runs").hidden = view !== "runs";
-  ["view-tools", "view-runs"].forEach((id) => { $(id).style.display = $(id).hidden ? "none" : "flex"; });
+  Object.keys(VIEWS).forEach((name) => {
+    const box = $(VIEWS[name]);
+    if (!box) return;
+    box.hidden = view !== name;
+    box.style.display = box.hidden ? "none" : "flex";
+  });
   if (view === "runs") loadRuns();
+  if (view === "flow" && window.openFlows) window.openFlows();
   paintRail();
 }
 

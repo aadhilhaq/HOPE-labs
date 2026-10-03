@@ -6,7 +6,6 @@ account, a button and a log — because the tools themselves live in the browser
 room for them. The sign-in is the HOPE-MD launcher's, Duo dialogue and all, since that part is
 the same wherever it is used.
 """
-import json
 import os
 import queue
 import threading
@@ -17,36 +16,12 @@ from tkinter import messagebox, ttk
 
 from . import APP, TAGLINE, __version__, credit, ACK
 from . import clusters, hub as hubmod, tunnel
-
-CONFIG = os.path.join(os.path.expanduser("~"), ".hope_labs.json")
+# The settings file is read by the hub and the canvas as well as by this window, so where it is
+# and how it is written live in one module rather than here.
+from .settings import SCHEMA, load, save
 
 BANNER = dict(deep="#0b2b33", deeper="#061a20", teal="#5fb3c4", warm="#c2603a",
               paper="#f4f8f8", muted="#b7d6dc", faint="#8fb6bd")
-SCHEMA = 1
-
-
-def load():
-    try:
-        with open(CONFIG) as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return {}
-
-
-def save(d):
-    """Keep these settings, and whatever else is already in the file with them.
-
-    The sign-in boxes are not the only thing kept here: "root" and "installs" are written by
-    hand (docs/install-on-grace.md), and a save that wrote only its own keys would delete them
-    the moment Sign in was pressed, which is to say before they were ever read.
-    """
-    kept = load()                      # before the open below truncates it
-    kept.update(dict(d, schema=SCHEMA))
-    try:
-        with open(CONFIG, "w") as fh:
-            json.dump(kept, fh, indent=1)
-    except OSError:
-        pass
 
 
 def chosen_installs(settings):

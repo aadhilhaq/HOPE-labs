@@ -58,26 +58,38 @@ def main(argv=None):
             # A hand-written "root" has to survive the sign-in boxes being written over it:
             # they are saved as Sign in is pressed, just before the installs are read.
             import tempfile, shutil, os as _os
+            from . import settings as store
             tmp = tempfile.mkdtemp()
             try:
-                app.CONFIG, keep = _os.path.join(tmp, "settings.json"), app.CONFIG
+                store.CONFIG, keep = _os.path.join(tmp, "settings.json"), store.CONFIG
                 app.save({"root": "/scratch/user/jane.doe"})
+                store.flow_save({"version": 1, "name": "kept", "nodes": [], "edges": []})
                 app.save({"site": "Grace (TAMU)", "user": "jane.doe"})
                 kept = app.load()
                 assert kept.get("root") == "/scratch/user/jane.doe", kept
                 assert kept.get("user") == "jane.doe", kept
+                assert [f["name"] for f in store.flows()] == ["kept"], kept
                 assert app.chosen_installs(kept)["adcp"] == "/scratch/user/jane.doe/ADCP_docking"
-                app.CONFIG = keep
+                store.CONFIG = keep
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
-            notes.append("window ok, settings kept across a sign-in")
+            notes.append("window ok, settings and flows kept across a sign-in")
         except ImportError as exc:
             notes.append("no tkinter here (%s)" % exc)
         import os
-        for name in ("index.html", "app.js", "style.css", "tool.html", "tool.js"):
+        for name in ("index.html", "app.js", "flow.js", "style.css", "tool.html", "tool.js"):
             path = os.path.join(hub.WEB, name)
             assert os.path.isfile(path), "the page is missing from the bundle: " + name
         notes.append("page ok")
+        # The canvas: the card catalogue the runner reads, the example it starts from, and the one
+        # refusal that is about a number rather than a kind.
+        from . import canvas
+        assert len(canvas.catalogue()["cards"]) == 6, "a card went missing from the catalogue"
+        assert canvas.check(canvas.example())["problems"] == [], canvas.check(canvas.example())
+        long_binder = canvas.refusals({"binder_max": 100})["bindcraft:sequences>adcp:sequences"]
+        assert "30 residues or fewer" in long_binder, long_binder
+        assert canvas.refusals({"binder_max": 24})["bindcraft:sequences>adcp:sequences"] == ""
+        notes.append("canvas ok, %d cards" % len(canvas.catalogue()["cards"]))
         # the docs ride along in web/, so a build that left them behind is caught here too
         from . import docs
         missing = docs.audit()
