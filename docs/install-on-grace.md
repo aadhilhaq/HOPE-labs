@@ -165,6 +165,43 @@ README's Requirements table is plain about what that needs, and none of it is yo
 `amber` group for every run, the `desmond` group for Desmond runs, and HPRC's Schrödinger users list
 for Prime MM-GBSA. Each is a mail to help@hprc.tamu.edu after registering with the authors.
 
+## RFdiffusion and BoltzGen
+
+These two are not on the Tools screen and have no page of their own: they are cards on the canvas,
+and a flow is how the lab runs them. Both are installed in the group space, and neither needs
+anything from you if you work there.
+
+**RFdiffusion with ProteinMPNN.** `ML_programs/RFdiffusion` holds the code and its nine checkpoints,
+and `envs/SE3nv` is its environment, a Python 3.9 with torch. `ML_programs/dl_binder_design` is the
+ProteinMPNN half, with its own weights under `mpnn_fr/ProteinMPNN`. Both halves run in `SE3nv`:
+ProteinMPNN needs only torch and numpy, and that environment has them.
+
+`envs/proteinmpnn_binder_design` is **not used, and does not work.** It has no Python standard
+library at all: 78 conda packages and no `lib/python3.11`, so its interpreter cannot start whatever
+its permissions say. Rebuild it only if something outside HOPE Labs wants it; the card does not.
+
+**BoltzGen.** `envs/boltzgen` is BoltzGen 0.3.2 on Python 3.12, and `envs/boltzgen_cache` holds its
+weights: five checkpoints and `mols.zip`, about 8 GB. It cannot share the Boltz-2 environment beside
+it, because `boltz` pins numpy below 2 and `boltzgen` pins 2.0.2: pip installs the second over the
+first without saying so, and leaves Boltz-2 broken. To install it again, elsewhere:
+
+```bash
+conda create -p <prefix>/envs/boltzgen python=3.12 && <prefix>/envs/boltzgen/bin/pip install boltzgen
+HF_HOME=<prefix>/envs/boltzgen_cache <prefix>/envs/boltzgen/bin/boltzgen download all \
+    --cache <prefix>/envs/boltzgen_cache
+```
+
+Fetch the weights on a **login** node: a compute node has no internet, and a cache missing one
+checkpoint fails when the model loads rather than when the job is submitted.
+
+One thing to know before reading a BoltzGen spec by hand: it numbers the residues a binder should
+touch by their **position in the chain**, not by the numbering the structure file carries. On the
+lab's own hPD-L1, whose file begins at residue 18, residues 54 and 56 are positions 37 and 39. The
+card takes the file's numbering, as every other tool here does, and converts; it then runs
+`boltzgen check` and reads the marked residues back before queueing anything, because getting this
+wrong does not fail. It designs against a different patch of the surface and returns binders for the
+wrong site.
+
 ## Pointing HOPE Labs at your installs
 
 HOPE Labs reads a small settings file on your own computer, not on Grace. On macOS and Linux it is

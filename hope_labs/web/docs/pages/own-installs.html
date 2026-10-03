@@ -129,6 +129,36 @@ to grant: the <code>amber</code> group for every run, the <code>desmond</code> g
 runs, and HPRC's Schr&ouml;dinger users list for Prime MM-GBSA. Each is a mail to
 help@hprc.tamu.edu after registering with the authors.</p>
 
+<h2 id="rfdiffusion-and-boltzgen">RFdiffusion and BoltzGen</h2>
+<p>These two are not on the Tools screen and have no page of their own: they are cards on the canvas, and a flow is how the lab runs them. Both are installed in the
+group space, and neither needs anything from you if you work there.</p>
+<p><b>RFdiffusion with ProteinMPNN.</b> <code>ML_programs/RFdiffusion</code> holds the code and its
+nine checkpoints, and <code>envs/SE3nv</code> is its environment, a Python 3.9 with torch.
+<code>ML_programs/dl_binder_design</code> is the ProteinMPNN half, with its own weights under
+<code>mpnn_fr/ProteinMPNN</code>. Both halves run in <code>SE3nv</code>: ProteinMPNN needs only
+torch and numpy, and that environment has them.</p>
+<div class="tip"><code>envs/proteinmpnn_binder_design</code> is <b>not used, and does not work</b>.
+It has no Python standard library at all: 78 conda packages and no
+<code>lib/python3.11</code>, so its interpreter cannot start whatever its permissions say. Rebuild it only if something outside
+HOPE Labs wants it; the card does not.</div>
+<p><b>BoltzGen.</b> <code>envs/boltzgen</code> is BoltzGen 0.3.2 on Python 3.12, and
+<code>envs/boltzgen_cache</code> holds its weights: five checkpoints and <code>mols.zip</code>, about
+8 GB. It cannot share the Boltz-2 environment beside it, because <code>boltz</code> pins numpy below
+2 and <code>boltzgen</code> pins 2.0.2: pip installs the second over the first without saying so, and
+leaves Boltz-2 broken. To install it again, elsewhere:</p>
+<pre>conda create -p &lt;prefix&gt;/envs/boltzgen python=3.12 &amp;&amp; &lt;prefix&gt;/envs/boltzgen/bin/pip install boltzgen
+HF_HOME=&lt;prefix&gt;/envs/boltzgen_cache &lt;prefix&gt;/envs/boltzgen/bin/boltzgen download all \
+    --cache &lt;prefix&gt;/envs/boltzgen_cache</pre>
+<p>Fetch the weights on a <b>login</b> node: a compute node has no internet, and a cache missing one
+checkpoint fails when the model loads rather than when the job is submitted.</p>
+<p>One thing to know before reading a BoltzGen spec by hand: it numbers the residues a binder should
+touch by their <b>position in the chain</b>, not by the numbering the structure file carries. On the
+lab's own hPD-L1, whose file begins at residue 18, residues 54 and 56 are positions 37 and 39. The
+card takes the file's numbering, as every other tool here does, and converts; it then runs
+<code>boltzgen check</code> and reads the marked residues back before queueing anything, because
+getting this wrong does not fail. It designs against a different patch of the surface and returns
+binders for the wrong site.</p>
+
 <h2 id="pointing-hope-labs-at-your-copies">Pointing HOPE Labs at your copies</h2>
 <p>HOPE Labs reads a small settings file on your own computer, not on Grace. On macOS and Linux it
 is <code>~/.hope_labs.json</code>; on Windows it is
