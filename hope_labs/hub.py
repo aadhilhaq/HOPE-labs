@@ -295,6 +295,17 @@ def tail(buf, n=12):
     return "\n".join(lines[-n:])
 
 
+def said(out, err):
+    """The one line of a runner's answer worth putting in front of a person.
+
+    A refusal from the runner is a sentence on stderr, but a bug in it is a traceback, and the
+    first three hundred characters of a traceback are frames and file names rather than what went
+    wrong. The last line is the sentence either way.
+    """
+    lines = [l.strip() for l in ((err or "").strip() or (out or "")).splitlines() if l.strip()]
+    return lines[-1][:300] if lines else ""
+
+
 def handler_for(hub):
     class Handler(BaseHTTPRequestHandler):
         server_version = "hope-labs"
@@ -366,6 +377,10 @@ def handler_for(hub):
                     return self._json(canvas.example())
                 if url.path == "/api/flow/saved":
                     return self._json({"flows": settings.flows()})
+                # The flows that have been queued, so that a person who comes back the next day
+                # finds the one they started rather than a folder they have to remember.
+                if url.path == "/api/flow/queued":
+                    return self._json({"runs": settings.queued()})
             except Exception as exc:                            # noqa: BLE001
                 traceback.print_exc()
                 return self._json({"error": str(exc)}, 500)
@@ -400,10 +415,23 @@ def handler_for(hub):
                     return self._json(canvas.plan(hub.flows, body.get("flow") or {},
                                                   body.get("runs", "")))
                 if url.path == "/api/flow/launch":
-                    return self._json(canvas.launch(hub.flows, body.get("flow") or {},
-                                                    body.get("runs", "")))
+                    got = canvas.launch(hub.flows, body.get("flow") or {}, body.get("runs", ""))
+                    # The folder is the only way back to a flow once this window is closed, so it
+                    # is written down with the drawing it came from before the answer goes out. A
+                    # settings file that cannot be written is not worth losing the launch over:
+                    # the flow is queued either way, and the folder is in the answer.
+                    try:
+                        settings.queued_save(body.get("flow") or {}, got.get("folder", ""))
+                    except (OSError, ValueError) as why:
+                        hub.say("the flow was queued but not written down: %s" % why)
+                    return self._json(got)
                 if url.path == "/api/flow/status":
                     return self._json(hub.flows.status(body.get("folder", "")))
+                # Carrying on is queueing, so it commits as much as Launch did. The page offers it
+                # only once nothing of the flow is left in the queue, and the runner queues the
+                # cards that have not finished rather than the whole flow again.
+                if url.path == "/api/flow/resume":
+                    return self._json(hub.flows.resume(body.get("folder", "")))
                 if url.path == "/api/flow/stop":
                     return self._json(hub.flows.stop(body.get("folder", "")))
             except Exception as exc:                            # noqa: BLE001
@@ -545,8 +573,20 @@ class Flows:
             raise RuntimeError("that flow's record could not be read: %s"
                                % ((err or out).strip()[:300] or "it said nothing"))
 
+    def resume(self, folder):
+        """Carry on a flow that stopped. What finished is left alone; the rest is queued again.
+
+        It waits as long as launch rather than as long as stop, because it does the same work:
+        a flow of five cards is a dozen sbatch calls down the connection, and a resume cut short
+        halfway would leave a person with half a flow in the queue and no way to tell which half.
+        """
+        status, out, err = self._run("resume %s" % shlex.quote(folder), timeout=600)
+        if status != 0:
+            raise RuntimeError(said(out, err) or "the flow could not be carried on")
+        return {"resumed": (out or "").strip()}
+
     def stop(self, folder):
         status, out, err = self._run("stop %s" % shlex.quote(folder))
         if status != 0:
-            raise RuntimeError((err or out).strip()[:300] or "the flow could not be stopped")
+            raise RuntimeError(said(out, err) or "the flow could not be stopped")
         return {"stopped": (out or "").strip()}

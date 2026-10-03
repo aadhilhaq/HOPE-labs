@@ -1,4 +1,5 @@
-"""The settings file on this computer: the sign-in boxes, the installs, and the saved flows.
+"""The settings file on this computer: the sign-in boxes, the installs, the saved flows, and
+where the flows that have been queued landed.
 
 One module knows where the file is and how it is written, because three parts of the launcher
 read it: the window saves the sign-in boxes into it, the hub reads the installs out of it, and
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 CONFIG = os.path.join(os.path.expanduser("~"), ".hope_labs.json")
 SCHEMA = 1
@@ -31,9 +33,9 @@ def save(d):
     """Keep these settings, and whatever else is already in the file with them.
 
     The sign-in boxes are not the only thing kept here: "root" and "installs" are written by
-    hand (docs/install-on-grace.md) and "flows" by the canvas, and a save that wrote only its own
-    keys would delete them the moment Sign in was pressed, which is to say before they were ever
-    read.
+    hand (docs/install-on-grace.md) and "flows" and "runs" by the canvas, and a save that wrote
+    only its own keys would delete them the moment Sign in was pressed, which is to say before
+    they were ever read.
     """
     kept = load()                      # before the open below truncates it
     kept.update(dict(d, schema=SCHEMA))
@@ -88,3 +90,49 @@ def flow_delete(name):
     kept.pop(str(name or ""), None)
     save({"flows": kept})
     return flows()
+
+
+# ---- the flows that have been queued --------------------------------------
+# A queued flow runs on the cluster whether the launcher is open or not, and the folder the runner
+# put it in is the only way back to it. So it is written down here, beside the flows a person
+# saved, together with the drawing it was queued from: the run view stands the cards where they
+# were drawn and colours them from the record on the cluster, and somebody who signs in tomorrow
+# finds the flow they started today rather than a folder they have to remember.
+#
+# Kept under the folder rather than under the flow's name, because a flow is launched more than
+# once. The same name queued twice is two runs in two folders, and keying by name would lose the
+# first of them the moment the second started.
+
+#: How many runs to keep. Past this the file is growing for nobody: a flow older than the fortieth
+#: is read out of Results or off the cluster, not watched.
+KEEP_RUNS = 40
+
+
+def queued():
+    """Every flow queued from this computer, newest first, each with the drawing it came from."""
+    kept = load().get("runs")
+    if not isinstance(kept, dict):
+        return []
+    out = [dict(one, folder=folder) for folder, one in kept.items() if isinstance(one, dict)]
+    # The folder settles a tie, because two flows queued in the same second otherwise come out in
+    # whatever order the file was written in. A flow queued twice under one name has the time of
+    # day appended to the second folder, so the folder puts them the right way round as well.
+    out.sort(key=lambda r: (r.get("started") or 0, r.get("folder") or ""), reverse=True)
+    return out
+
+
+def queued_save(doc, folder):
+    """Remember that this drawing was queued, and where the runner put it."""
+    folder = str(folder or "").strip()
+    if not folder:
+        raise ValueError("a queued flow is remembered by its folder, and none was given")
+    kept = load().get("runs")
+    kept = dict(kept) if isinstance(kept, dict) else {}
+    kept[folder] = {"name": str((doc or {}).get("name") or ""), "flow": doc,
+                    "started": int(time.time())}
+    # Newest kept, oldest dropped: a person watches the flow they have just started, not the one
+    # before the fortieth.
+    newest = sorted(kept.items(), key=lambda kv: ((kv[1] or {}).get("started") or 0, kv[0]),
+                    reverse=True)[:KEEP_RUNS]
+    save({"runs": dict(newest)})
+    return queued()
