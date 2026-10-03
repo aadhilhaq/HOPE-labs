@@ -7,6 +7,17 @@ a person approves Duo once instead of five times.
 """
 
 __version__ = "0.1.7"
+
+#: What this build's server offers the page: the routes and the shapes they answer with. The page
+#: files say which of these they need, and the two numbers are how a launcher decides whether it
+#: can serve a newer page than the one it was built with.
+#:
+#: Raise PAGE_API when a route is added or an answer's shape changes. Raise PAGE_NEEDS only when
+#: the page files stop working against an older server - adding a view that calls a new route does
+#: that; rewording a sentence does not. Keeping them apart is what lets most changes reach people
+#: who have an old launcher, instead of every change needing a new download.
+PAGE_API = 1
+PAGE_NEEDS = 1
 APP = "HOPE Labs"
 TAGLINE = "the lab's tools, in one place"
 BLURB = "Docking, design and simulation on Grace, from one sign-in."
