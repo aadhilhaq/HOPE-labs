@@ -92,7 +92,8 @@ class Tool:
     """One tool: what it is, where it is, and the line that starts it."""
 
     def __init__(self, key, name, tagline, category, install, start, ready, blurb="",
-                 needs_port=False, runs=(), next_steps=(), takes="", gives="", page="/"):
+                 needs_port=False, runs=(), next_steps=(), takes="", gives="", page="/",
+                 flow_only=False):
         self.key = key
         self.name = name
         self.tagline = tagline
@@ -107,6 +108,10 @@ class Tool:
         self.takes = takes                # what another tool can hand it
         self.gives = gives                # what it leaves for the next tool
         self.page = page                  # the page its tab opens on, as its own launcher opens it
+        #: A tool with no page of its own. It is listed here because it is one of the lab's tools
+        #: and somebody looking for it looks here, but it is run from a flow: its tile says so and
+        #: offers the canvas rather than a Launch that could only fail.
+        self.flow_only = flow_only
 
     def command(self, install="", runs="", port=0):
         return self._start(remote_path(install or self.install), runs, port)
@@ -115,7 +120,8 @@ class Tool:
         return {"key": self.key, "name": self.name, "tagline": self.tagline, "blurb": self.blurb,
                 "category": self.category, "install": self.install,
                 "next_steps": [{"to": to, "label": label} for to, label in self.next_steps],
-                "takes": self.takes, "gives": self.gives, "page": self.page}
+                "takes": self.takes, "gives": self.gives, "page": self.page,
+                "flow_only": self.flow_only}
 
 
 # --- the lines that start each tool ----------------------------------------
@@ -187,6 +193,16 @@ def _monitor(where, runs, port):
             'PYTHONPATH=%s exec python %s' % (where, where, args))
 
 
+def _no_page(where, runs, port):
+    """A tool with no page has no line that starts one. Never called: the page offers these two
+    the canvas instead of a Launch, and the hub refuses to start one before it gets this far."""
+    raise RuntimeError("this tool has no page of its own; it is run from a flow")
+
+
+def _never(text, asked_port):
+    return None
+
+
 TOOLS = (
     Tool("adcp", "ADCP docking", "Dock a peptide into a receptor",
          "Docking", "/scratch/group/sflab/ADCP_docking", _adcp, _url_ready,
@@ -227,6 +243,24 @@ TOOLS = (
          # since someone who has just signed in is setting a run up; it lists the runs as well
          page="/pick",
          next_steps=(("adcp", "Dock a design in ADCP"), ("hopemd", "Simulate a design in HOPE-MD"))),
+
+    Tool("rfdiffusion", "RFdiffusion", "Design a binder backbone, then its sequence",
+         "Design", "/scratch/group/sflab/ML_programs/RFdiffusion", _no_page, _never,
+         blurb="Diffuses a binder backbone onto the target with RFdiffusion, then gives it a "
+               "sequence with ProteinMPNN. The design arrives already placed on the target.",
+         runs=("$SCRATCH/rfdiffusion_runs",),
+         gives="designed binders",
+         flow_only=True,
+         next_steps=(("hopemd", "Simulate a design in HOPE-MD"),)),
+
+    Tool("boltzgen", "BoltzGen", "Generate a binder against the target",
+         "Design", "/scratch/group/sflab/envs/boltzgen", _no_page, _never,
+         blurb="Generates binders against a target of any kind, protein, peptide, nucleic acid "
+               "or small molecule, then folds and ranks them with its own pipeline.",
+         runs=("$SCRATCH/boltzgen_runs",),
+         gives="designed binders",
+         flow_only=True,
+         next_steps=(("hopemd", "Simulate a design in HOPE-MD"),)),
 
     Tool("hopemd", "HOPE-MD", "Simulate a complex",
          "Simulation", "/scratch/group/sflab/HOPE-MD/MD", _hopemd, _url_ready,

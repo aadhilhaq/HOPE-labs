@@ -13,8 +13,13 @@ def main(argv=None):
     # it can prove that it starts, that its imports resolve and that what it needs came along.
     if "--selftest" in argv:
         from . import tools, tunnel, hub, clusters, credit            # noqa: F401
-        assert len(tools.TOOLS) == 5, "a tool went missing from the catalogue"
-        for tool in tools.TOOLS:
+        assert len(tools.TOOLS) == 7, "a tool went missing from the catalogue"
+        # Every tool that has a page of its own starts with a line that honours the runs folder.
+        # The two that have none are listed for people to find and are run from a flow; their
+        # tiles offer the canvas, and asking the hub to start one is refused in its own words.
+        pages = [t for t in tools.TOOLS if not t.flow_only]
+        assert len(pages) == 5 and len(tools.TOOLS) - len(pages) == 2, [t.key for t in pages]
+        for tool in pages:
             line = tool.command(runs="~/r", port=8123)
             assert tool.install in line or '"$HOME"' in line, line
             assert '"$HOME"/r' in line, (tool.key, line)
@@ -28,7 +33,7 @@ def main(argv=None):
         # A copy in somebody's own scratch: one root moves all five, a tool named on its own
         # wins over it, and nothing set leaves the lab's installs alone.
         mine = tools.installs_for("/scratch/user/jane.doe")
-        assert len(mine) == 5 and mine["adcp"] == "/scratch/user/jane.doe/ADCP_docking", mine
+        assert len(mine) == 7 and mine["adcp"] == "/scratch/user/jane.doe/ADCP_docking", mine
         assert mine["hopemd"] == "/scratch/user/jane.doe/HOPE-MD/MD", mine
         assert tools.installs_for("") == {}, "no root means the lab's own installs"
         assert tools.installs_for("", {"hopemd": "/u/md"}) == {"hopemd": "/u/md"}

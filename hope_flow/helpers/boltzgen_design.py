@@ -72,6 +72,23 @@ def chains_of(path):
     return found
 
 
+def sequence_of(path, chain):
+    """The one-letter sequence of one chain of a PDB, in file order."""
+    out, seen = [], set()
+    with open(path, errors="replace") as fh:
+        for line in fh:
+            if not line.startswith("ATOM") or line[12:16].strip() != "CA":
+                continue
+            if (line[21].strip() or "A") != chain:
+                continue
+            key = line[22:27]
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(AMINO.get(line[17:20].strip(), "X"))
+    return "".join(out)
+
+
 def wanted(text, default_chain):
     """{chain: [author residue numbers]} from "54,56,66-70" or "A54,B12-16"."""
     out = {}
@@ -150,39 +167,51 @@ def marked(cif):
     return sorted(out)
 
 
-def cif_chains(path):
-    """{chain: residues} of a design BoltzGen wrote, counted from its CA atoms."""
-    found = {}
+def cif_sequences(path):
+    """{chain: one-letter sequence} of a design BoltzGen wrote, in residue order."""
+    found, seen = {}, set()
     try:
         with open(path, errors="replace") as fh:
             for line in fh:
                 if not line.startswith(("ATOM", "HETATM")):
                     continue
                 bits = line.split()
-                if len(bits) < 8 or bits[3] != "CA":
+                if len(bits) < 9 or bits[3] != "CA":
                     continue
-                found[bits[6]] = found.get(bits[6], 0) + 1
+                chain, residue, number = bits[6], bits[5], bits[8]
+                if (chain, number) in seen:
+                    continue
+                seen.add((chain, number))
+                found[chain] = found.get(chain, "") + AMINO.get(residue.upper(), "X")
     except OSError:
         return {}
     return found
 
 
-def split_chains(path, target_len):
-    """(the binder's chain, [the target's chains]) in a design, told apart by length.
+def split_chains(path, designed, target_seqs):
+    """(the binder's chain, [the target's chains]) in a design, told apart by SEQUENCE.
 
-    BoltzGen writes the target as it was given and the binder beside it, under ids of its own
-    choosing, so the chain matching the target's length is the target and what is left is the
-    binder. Getting this the wrong way round would hand the simulation a receptor and a partner
-    the wrong way about.
+    Not by chain id and not by length. BoltzGen renames the chains of what it writes, so the id
+    asked for in the spec is not the id that comes out; and a binder can be the same length as a
+    small target, which would make a length test quietly pick the wrong one. The sequences settle
+    it: the designed sequence is in the metrics table, the target's is the one that went in, and
+    both are matched against what is actually in the file.
+
+    Returns ("", []) when the file does not say both plainly, which is a design skipped by name
+    rather than a receptor and a partner handed over the wrong way about.
     """
-    here = cif_chains(path)
-    if not here:
+    here = cif_sequences(path)
+    if not here or not designed:
         return "", []
-    target = [c for c, n in sorted(here.items()) if n == target_len]
-    left = [c for c in sorted(here) if c not in target]
-    if len(left) != 1 or not target:
+    designed = designed.upper()
+    targets = {s.upper() for s in target_seqs if s}
+    binder = [c for c, s in sorted(here.items()) if s.upper() == designed]
+    target = [c for c, s in sorted(here.items()) if s.upper() in targets]
+    # Exactly one chain carrying the designed sequence, and the target found beside it. A chain
+    # that is both is a design identical to its target, which is not a binder worth passing on.
+    if len(binder) != 1 or not target or binder[0] in target:
         return "", []
-    return left[0], target
+    return binder[0], target
 
 
 def main():
@@ -272,7 +301,8 @@ def main():
             if f.endswith(".cif"):
                 structures.setdefault(re.sub(r"^rank\d+_", "", f[:-4]), os.path.join(here, f))
 
-    target_len = sum(len(present[c]) for c in keep)
+    # The target's own sequences, read from the file that went in, to recognise it on the way out.
+    target_seqs = [sequence_of(plan["target"], c) for c in keep]
     designs, dropped = [], []
     for row in rows:
         name = (row.get("id") or os.path.splitext(row.get("file_name") or "")[0]).strip()
@@ -283,9 +313,9 @@ def main():
         if not path:
             dropped.append((name, "no structure among the ranked designs"))
             continue
-        binder, target_chains = split_chains(path, target_len)
+        binder, target_chains = split_chains(path, seq, target_seqs)
         if not binder:
-            dropped.append((name, "cannot tell the binder from the target in the structure"))
+            dropped.append((name, "no chain in the structure carries the designed sequence"))
             continue
         try:
             rank = int(float(row.get("final_rank") or row.get("secondary_rank") or 1e9))

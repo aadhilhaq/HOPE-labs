@@ -139,6 +139,11 @@ class Hub:
             return self._launch(tool, key, runs)
 
     def _launch(self, tool, key, runs):
+        # A tool with no page cannot be started this way, whatever asked. The page offers these
+        # the canvas instead, so this answers a stale tab or a request made by hand.
+        if getattr(tool, "flow_only", False):
+            raise ValueError("%s has no page of its own: it is run from a flow, on the Flows "
+                             "screen" % tool.name)
         with self.lock:
             up = self.running.get(key)
             if up is not None and up.alive():

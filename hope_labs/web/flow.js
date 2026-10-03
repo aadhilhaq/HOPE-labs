@@ -1079,6 +1079,15 @@ async function openFlows() {
 }
 window.openFlows = openFlows;
 
+// Tools that have no page of their own are listed on the Tools screen and run from here: their
+// tile hands the card over rather than offering a Launch that could only fail.
+window.addFlowCard = function (key) {
+  openFlows();
+  const id = addCard(key);
+  if (id) flash("Added " + (cardOf(key) || {}).name + " to the flow. Link a target to it.");
+  return id;
+};
+
 $("flowname").addEventListener("input", () => { FLOW.name = $("flowname").value.trim(); touch(); });
 
 $("flowexample").onclick = async () => {

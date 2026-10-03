@@ -62,7 +62,8 @@ function paintRail() {
     row.appendChild(el("span", "dot" + (tool.running ? " up" : "")));
     row.appendChild(el("span", "nm", tool.name));
     row.title = tool.running ? tool.name + " is running" : "start " + tool.name;
-    row.onclick = () => open_tool(tool.key);
+    row.onclick = () => (tool.flow_only && window.addFlowCard
+                         ? window.addFlowCard(tool.key) : open_tool(tool.key));
     box.appendChild(row);
   });
   document.querySelectorAll(".ritem[data-view]").forEach((b) => {
@@ -103,6 +104,29 @@ function card(tool) {
   }
 
   const acts = el("div", "acts");
+  // A tool with no page of its own is listed because somebody looking for it looks here, but
+  // Launch would have nothing to open. Its tile offers the canvas, where it is actually run.
+  if (tool.flow_only) {
+    const draw = el("button", "btn pri", "Add to a flow");
+    draw.title = tool.name + " runs from a flow: it has no page of its own";
+    draw.onclick = () => {
+      if (window.addFlowCard) window.addFlowCard(tool.key);
+      else flash(tool.name + " is run from the Flows screen.", true);
+    };
+    acts.appendChild(draw);
+    box.appendChild(el("div", "chain", "no page of its own: run it from a flow"));
+    acts.appendChild(el("span", "why", ""));
+    tool.next_steps.forEach((step) => {
+      const to = byKey(step.to);
+      if (!to) return;
+      const next = el("button", "btn sm next", "\u2192 " + to.name);
+      next.title = step.label;
+      next.onclick = (e) => { e.stopPropagation(); open_tool(step.to); };
+      acts.appendChild(next);
+    });
+    box.appendChild(acts);
+    return box;
+  }
   const go = el("button", "btn pri", tool.running ? "Open" : "Launch");
   go.onclick = () => open_tool(tool.key, go);
   acts.appendChild(go);

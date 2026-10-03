@@ -97,31 +97,28 @@ def residues(text, default_chain):
     return out
 
 
-def split_chains(here, target_in, binder_min, binder_max):
+def split_chains(path, here, target_seqs, binder_min, binder_max):
     """(the binder's chain, [the target's chains]) in a design RFdiffusion wrote.
 
-    Told apart by length against the target that went in, rather than by where they sit in the
-    file. RFdiffusion writes the binder first and the target after it, which is the opposite way
-    round from how it is written in the contig, and a design whose chains are taken the wrong way
-    round does not fail: ProteinMPNN redesigns the target instead, and the run produces a hundred
-    sequences for the protein that was already there.
+    Told apart by SEQUENCE, not by chain id and not by where the chains sit in the file.
+    RFdiffusion writes the binder first and the target after it, the opposite way round from the
+    contig that asked for them, and a design taken the wrong way round does not fail: ProteinMPNN
+    redesigns the target instead and the run returns sequences for the protein that was already
+    there. The target is kept verbatim, so it is recognised by its own sequence; what is left,
+    and is the length that was asked for, is the binder.
     """
-    lengths = {c: len(n) for c, n in here.items()}
-    wanted = sorted(len(n) for n in target_in.values())
-    target, left = [], dict(lengths)
-    for want in wanted:
-        match = next((c for c, n in sorted(left.items()) if n == want), "")
-        if match:
-            target.append(match)
-            left.pop(match)
-    # What is left should be the one diffused chain, and its length should be the length asked
-    # for. Both are checked: a design that is neither is skipped by name rather than guessed at.
-    if len(left) != 1:
+    seqs = {c: sequence_of(path, c) for c in here}
+    targets = {s.upper() for s in target_seqs if s}
+    target = [c for c, s in sorted(seqs.items()) if s.upper() in targets]
+    left = [c for c in sorted(seqs) if c not in target]
+    if not target or len(left) != 1:
         return "", []
-    binder = next(iter(left))
-    if not (binder_min - 2) <= lengths[binder] <= (binder_max + 2):
+    binder = left[0]
+    # The diffused chain is poly-glycine until ProteinMPNN has been over it, so its length is what
+    # there is to check it against; a design that is neither is skipped by name, not guessed at.
+    if not (binder_min - 2) <= len(seqs[binder]) <= (binder_max + 2):
         return "", []
-    return binder, sorted(target)
+    return binder, target
 
 
 def contig(target_chains, binder_min, binder_max):
@@ -184,6 +181,8 @@ def main():
     env = dict(os.environ, PYTHONPATH=plan["rfdiffusion"])
     run(args, where=plan["rfdiffusion"], env=env)
 
+    # The target's own sequences, to recognise it again in what RFdiffusion writes.
+    target_seqs = [sequence_of(target, c) for c in sorted(keep)]
     backbones = sorted(f for f in os.listdir(rf_dir) if f.endswith(".pdb"))
     if not backbones:
         raise SystemExit("RFdiffusion wrote no designs into %s" % rf_dir)
@@ -199,7 +198,8 @@ def main():
     for name in backbones:
         path = os.path.join(rf_dir, name)
         here = chains_of(path)
-        binder, target_chains = split_chains(here, keep, plan["binder_min"], plan["binder_max"])
+        binder, target_chains = split_chains(path, here, target_seqs,
+                                             plan["binder_min"], plan["binder_max"])
         if not binder or not target_chains:
             say("  %s: skipped, cannot tell the binder from the target in %s"
                 % (name, ", ".join("%s:%d" % (c, len(n)) for c, n in sorted(here.items()))))

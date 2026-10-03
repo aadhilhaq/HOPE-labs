@@ -287,9 +287,8 @@ BOLTZGEN = Card(
         Setting("partition", "Partition", "text", "", optional=True, advanced=True),
         Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ],
-    ready=False,
-    note="Generates binders against a target of any kind - protein, peptide, nucleic acid or "
-         "small molecule. Not yet startable from a flow: its driver is still being written.")
+    note="Generates binders against a target of any kind, protein, peptide, nucleic acid or "
+         "small molecule, and leaves them already placed on it.")
 
 APTAMER = Card(
     "aptamer", "HOPE-Aptamer", "design and fold an aptamer",
