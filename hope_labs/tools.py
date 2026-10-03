@@ -1,22 +1,25 @@
-"""The five tools: where each lives, how it is started, and how it says it is ready.
+"""The lab's tools: where each lives, how it is started, and how it says it is ready.
 
-Everything that differs between the lab's tools is in this table, so the hub itself knows
-nothing about any particular one. Each tool is already a web page served on a login node; the
-hub starts it over the shared SSH connection, forwards a local port and shows it.
+Everything that differs between the lab's tools is in this table, so the hub itself knows nothing
+about any particular one. Each is a web page served on a login node; the hub starts it over the
+shared SSH connection, forwards a local port and shows it. Five of the pages belong to the tool
+they front. The two design tools never had one, so theirs is in this repository, under
+hope_labs/pages, and starts from the HOPE Labs checkout rather than from the install.
 
-The three handshakes are the awkward part. HOPE-MD, BindCraft2 and the docking console all
-print one line carrying the port they took and the token that gates them. The aptamer pipeline
-prints two lines of its own. The pipelines monitor prints neither: it is told which port to use
-and prints a banner with the token in it. None of them takes a token on the command line, and
-that is deliberate in all five: a login node is shared and `ps` shows every argument to
-everybody on it.
+The three handshakes are the awkward part. HOPE-MD, BindCraft2, the docking console and the two
+design pages all print one line carrying the port they took and the token that gates them. The
+aptamer pipeline prints two lines of its own. The pipelines monitor prints neither: it is told
+which port to use and prints a banner with the token in it. None of them takes a token on the
+command line, and that is deliberate in every one: a login node is shared and `ps` shows every
+argument to everybody on it.
 """
 from __future__ import annotations
 
 import re
 import shlex
 
-# HOPE-MD, BindCraft2 and the docking console: "open  http://127.0.0.1:<port>/?t=<token>"
+# HOPE-MD, BindCraft2, the docking console and the two design pages:
+# "open  http://127.0.0.1:<port>/?t=<token>"
 URL_LINE = re.compile(r"http://127\.0\.0\.1:(\d+)/\?t=([A-Za-z0-9_\-]+)")
 # The aptamer pipeline announces itself in two lines.
 APTAMER_PORT = re.compile(r"HOPE-APTAMER-LAUNCHER port=(\d+) node=(\S+)")
@@ -27,9 +30,22 @@ MONITOR_TOKEN = re.compile(r"\?t=([A-Za-z0-9_-]{8,})")
 
 
 #: Where the lab's own copies are. Every default install below sits under it, so one setting
-#: moves all five: a person outside the group installs them in their own scratch and names that
+#: moves them all: a person outside the group installs them in their own scratch and names that
 #: folder instead. See docs/install-on-grace.md.
 LAB_ROOT = "/scratch/group/sflab"
+
+#: Where HOPE Labs itself is installed on the cluster. Two of the tools below have no page of
+#: their own and never had one, so theirs is part of this repository (hope_labs/pages) rather
+#: than of the tool it drives: their start lines run from here and are told where the tool is.
+#: hub.FLOW_INSTALL is the same path for the same reason, the flow runner being ours too.
+LABS_INSTALL = LAB_ROOT + "/HOPE-labs"
+
+#: Pythons to try, in order, for the two pieces of this repository that run on the cluster: the
+#: flow runner and the design pages. A login node's own python3 is 3.6 on this cluster, which
+#: cannot parse either of them, so one is looked for rather than named outright; the lab's
+#: HOPE-MD environment is the one every member already has.
+PYTHONS = ("/scratch/group/sflab/HOPE-MD/env/bin/python3", "python3.12", "python3.11",
+           "python3.10", "python3.9", "python3")
 
 
 def rebase(install, root):
@@ -68,7 +84,7 @@ def remote_path(path):
 
 
 def _url_ready(text, asked_port):
-    """(port, token) once one of the three prints its URL line."""
+    """(port, token) once a tool that prints its URL line has printed it."""
     found = URL_LINE.search(text)
     return (int(found.group(1)), found.group(2)) if found else None
 
@@ -108,9 +124,10 @@ class Tool:
         self.takes = takes                # what another tool can hand it
         self.gives = gives                # what it leaves for the next tool
         self.page = page                  # the page its tab opens on, as its own launcher opens it
-        #: A tool with no page of its own. It is listed here because it is one of the lab's tools
-        #: and somebody looking for it looks here, but it is run from a flow: its tile says so and
-        #: offers the canvas rather than a Launch that could only fail.
+        #: A tool with no page of its own: its tile offers the canvas rather than a Launch that
+        #: could only fail, and the hub refuses to start it. Nothing sets it now that the two
+        #: design tools have pages, and it is kept because the next tool the lab installs will
+        #: be listed here before anything can start it, as those two were.
         self.flow_only = flow_only
 
     def command(self, install="", runs="", port=0):
@@ -174,6 +191,44 @@ def _aptamer(where, runs, port):
             % {"w": where, "p": port, "t": tail})
 
 
+def python_search(override, what):
+    """A shell fragment leaving a Python of 3.8 or newer in $PY, or stopping to say there is none.
+
+    Shared by the flow runner's line and the design pages', so the two cannot drift apart: a
+    cluster that keeps its Pythons somewhere unusual is told once. `what` ends the sentence a
+    person reads when none is found, so the failure is about their tool rather than about an
+    interpreter they have never heard of.
+    """
+    tries = " ".join(shlex.quote(p) for p in PYTHONS)
+    return ('PY=""; for C in "${%s:-}" %s; do [ -n "$C" ] || continue; '
+            'command -v "$C" >/dev/null 2>&1 || continue; '
+            '"$C" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" '
+            '>/dev/null 2>&1 || continue; PY="$C"; break; done; '
+            '[ -n "$PY" ] || { echo "no Python of 3.8 or newer was found for %s" >&2; exit 3; }; '
+            % (override, tries, what))
+
+
+def _design_page(tool):
+    """The line that starts one of the two design pages.
+
+    The page is in this repository, so the line runs from the HOPE Labs checkout and the tool's
+    own install is handed to it as a setting: a copy of RFdiffusion in somebody's own scratch is
+    still driven by the lab's page, and the page is still the one this launcher was released
+    with. A checkout somewhere else is named with HOPELABS_INSTALL.
+
+    NO-LABS rather than NO-INSTALL when the checkout is missing, because for these two they are
+    different folders and saying the tool is not installed would send somebody to the wrong one.
+    """
+    def start(where, runs, port):
+        args = "%s --host 127.0.0.1 --port %d --install %s" % (tool, port, where)
+        if runs:
+            args += " --runs " + remote_path(runs)
+        return ('HL="${HOPELABS_INSTALL:-%s}"; cd "$HL" || { echo "NO-LABS $HL"; exit 3; }; %s'
+                'PYTHONPATH="$HL" exec "$PY" -m hope_labs.pages.serve %s'
+                % (LABS_INSTALL, python_search("HOPELABS_PYTHON", "the %s page" % tool), args))
+    return start
+
+
 def _monitor(where, runs, port):
     # The monitor is told its port. Its environment is envs/hope beside the checkout, not an
     # activate.sh inside it: a conda environment, which that pipeline's setup.sh gives a venv
@@ -191,16 +246,6 @@ def _monitor(where, runs, port):
             'if [ -f "$HL_ROOT"/envs/hope/bin/activate ]; then . "$HL_ROOT"/envs/hope/bin/activate; '
             'else echo "NO-ENV $HL_ROOT/envs/hope"; fi; '
             'PYTHONPATH=%s exec python %s' % (where, where, args))
-
-
-def _no_page(where, runs, port):
-    """A tool with no page has no line that starts one. Never called: the page offers these two
-    the canvas instead of a Launch, and the hub refuses to start one before it gets this far."""
-    raise RuntimeError("this tool has no page of its own; it is run from a flow")
-
-
-def _never(text, asked_port):
-    return None
 
 
 TOOLS = (
@@ -244,22 +289,26 @@ TOOLS = (
          page="/pick",
          next_steps=(("adcp", "Dock a design in ADCP"), ("hopemd", "Simulate a design in HOPE-MD"))),
 
+    # The two machine-learning design tools. Neither install has a page inside it, so each is
+    # driven by one of ours (hope_labs/pages), which queues the run through the same code a flow
+    # queues it through. Their runs folders are the flow's own, so a run started either way is
+    # found either way.
     Tool("rfdiffusion", "RFdiffusion", "Design a binder backbone, then its sequence",
-         "Design", "/scratch/group/sflab/ML_programs/RFdiffusion", _no_page, _never,
+         "Design", "/scratch/group/sflab/ML_programs/RFdiffusion",
+         _design_page("rfdiffusion"), _url_ready,
          blurb="Diffuses a binder backbone onto the target with RFdiffusion, then gives it a "
                "sequence with ProteinMPNN. The design arrives already placed on the target.",
          runs=("$SCRATCH/rfdiffusion_runs",),
          gives="designed binders",
-         flow_only=True,
          next_steps=(("hopemd", "Simulate a design in HOPE-MD"),)),
 
     Tool("boltzgen", "BoltzGen", "Generate a binder against the target",
-         "Design", "/scratch/group/sflab/envs/boltzgen", _no_page, _never,
+         "Design", "/scratch/group/sflab/envs/boltzgen",
+         _design_page("boltzgen"), _url_ready,
          blurb="Generates binders against a target of any kind, protein, peptide, nucleic acid "
                "or small molecule, then folds and ranks them with its own pipeline.",
          runs=("$SCRATCH/boltzgen_runs",),
          gives="designed binders",
-         flow_only=True,
          next_steps=(("hopemd", "Simulate a design in HOPE-MD"),)),
 
     Tool("hopemd", "HOPE-MD", "Simulate a complex",

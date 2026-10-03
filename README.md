@@ -43,7 +43,7 @@ launcher opens it: HOPE-pipelines on its workspace, the others on their front pa
 says *running*, and picking it again goes back to the tab that is already open rather than
 starting a second copy.
 
-**Results** lists the run folders of all five tools together, newest first, filtered by tool. Each
+**Results** lists the run folders of all seven tools together, newest first, filtered by tool. Each
 run carries the step that usually follows it: *Simulate these poses in HOPE-MD* beside a docking
 run, *Simulate a design in HOPE-MD* beside a BindCraft2 campaign. Pressing one opens the tool that
 takes it; its tab shows the run's folder with a **Copy path** button, and copies it on the way to

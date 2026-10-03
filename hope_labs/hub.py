@@ -241,6 +241,12 @@ class Hub:
         # with no folder there is no activate.sh or environment either, and that is not the news.
         if "no-install" in low or ("no such file or directory" in low and "cd" in low):
             return "there is no %s on the cluster: %s" % (tool.name, where)
+        # The two design tools are fronted by a page that belongs to HOPE Labs rather than to the
+        # install, so a missing checkout is a different folder from a missing tool and sending
+        # somebody to the tool's would waste their afternoon.
+        if "no-labs" in low:
+            return ("%s is run from a page that is part of HOPE Labs, and the HOPE Labs install "
+                    "on the cluster is not where it is expected.\n%s" % (tool.name, tail(buf)))
         if "no-activate" in low:
             return ("%s is installed at %s but its activate.sh is missing, so its environment "
                     "cannot be entered. Running its install.sh again writes it."
@@ -534,32 +540,19 @@ def serve(hub, port=0, host="127.0.0.1", tries=8):
 FLOW_INSTALL = "/scratch/group/sflab/HOPE-labs"
 
 
-#: Pythons to try for the runner, in order. A login node's own python3 is 3.6 on this cluster,
-#: which cannot read the runner at all, so one is looked for rather than assumed; the lab's
-#: HOPE-MD environment is the one every member already has.
-FLOW_PYTHONS = ("/scratch/group/sflab/HOPE-MD/env/bin/python3", "python3.12", "python3.11",
-                "python3.10", "python3.9", "python3")
-
-
 def flow_command(install, args, root=""):
     """The line that runs the flow runner on the login node, in a given checkout.
 
-    The runner needs Python 3.8 or newer. Rather than name one and fail on a cluster that keeps
-    it somewhere else, the line tries each candidate and takes the first that is new enough, so
-    the failure a person sees is about their flow rather than about an interpreter.
+    The runner needs Python 3.8 or newer. Rather than name one and fail on a cluster that keeps it
+    somewhere else, the line tries each candidate and takes the first that is new enough, so the
+    failure a person sees is about their flow rather than about an interpreter. The search is
+    tools.python_search, shared with the two design pages, which run from this same checkout and
+    would otherwise need their own copy of it.
     """
     where = catalogue.rebase(install or FLOW_INSTALL, root)
-    tries = " ".join(shlex.quote(p) for p in FLOW_PYTHONS)
-    return ('cd %s || exit 1; PY=""; '
-            'for C in "${HOPEFLOW_PYTHON:-}" %s; do '
-            '[ -n "$C" ] || continue; '
-            'command -v "$C" >/dev/null 2>&1 || continue; '
-            '"$C" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" '
-            '>/dev/null 2>&1 || continue; PY="$C"; break; done; '
-            '[ -n "$PY" ] || { echo "no Python of 3.8 or newer was found for the flow runner" >&2; '
-            'exit 3; }; '
-            'PYTHONPATH=%s exec "$PY" -m hope_flow.cli %s'
-            % (shlex.quote(where), tries, shlex.quote(where), args))
+    return ('cd %s || exit 1; %sPYTHONPATH=%s exec "$PY" -m hope_flow.cli %s'
+            % (shlex.quote(where), catalogue.python_search("HOPEFLOW_PYTHON", "the flow runner"),
+               shlex.quote(where), args))
 
 
 class Flows:

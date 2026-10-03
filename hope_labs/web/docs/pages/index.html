@@ -11,16 +11,20 @@ examples.</figcaption>
 </figure>
 
 <h2 id="what-it-does">What it does</h2>
-<p>The lab runs five tools on Grace, and each already serves a page of its own on a login
-node.</p>
+<p>The lab runs seven tools on Grace, and every one of them is a page on a login node.</p>
 <table>
 <tr><th>Tool</th><th>What it does</th><th>Leaves behind</th></tr>
 <tr><td><b>ADCP docking</b></td><td>Docks a peptide into a receptor and ranks the poses</td><td>docked poses</td></tr>
 <tr><td><b>HOPE-Aptamer</b></td><td>Designs aptamers against a target, folds and scores them</td><td>aptamer poses</td></tr>
 <tr><td><b>BindCraft2</b></td><td>Designs protein binders with AlphaFold 2 and ProteinMPNN</td><td>designed binders</td></tr>
 <tr><td><b>HOPE-pipelines</b></td><td>Designs peptides with the lab's four pipelines, set up from one workspace</td><td>designed peptides</td></tr>
+<tr><td><b>RFdiffusion</b></td><td>Diffuses a binder backbone onto the target, then gives it a sequence with ProteinMPNN</td><td>designed binders</td></tr>
+<tr><td><b>BoltzGen</b></td><td>Generates binders against a target of any kind, then folds and ranks them</td><td>designed binders</td></tr>
 <tr><td><b>HOPE-MD</b></td><td>Molecular dynamics of a complex on five engines</td><td>trajectories and binding energies</td></tr>
 </table>
+<p>Five of the seven serve their own page, and HOPE Labs only starts it. The last two never had
+one, so theirs is part of HOPE Labs: see
+<a href="own-installs.html#rfdiffusion-and-boltzgen">RFdiffusion and BoltzGen</a>.</p>
 <p>Opening one of them by hand takes a terminal, an SSH session, the command that starts it, a
 second session that forwards its port, and a Duo approval for each session. HOPE Labs signs in
 once, holds that one connection, and does the rest for whichever tool you pick: it starts the

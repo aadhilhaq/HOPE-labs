@@ -14,17 +14,22 @@ def main(argv=None):
     if "--selftest" in argv:
         from . import tools, tunnel, hub, clusters, credit            # noqa: F401
         assert len(tools.TOOLS) == 7, "a tool went missing from the catalogue"
-        # Every tool that has a page of its own starts with a line that honours the runs folder.
-        # The two that have none are listed for people to find and are run from a flow; their
-        # tiles offer the canvas, and asking the hub to start one is refused in its own words.
+        # Every tool here has a page of its own and starts with a line that honours the runs
+        # folder. The two design tools' pages are in this repository rather than in the install,
+        # so their lines run from the HOPE Labs checkout and name the install as a setting.
         pages = [t for t in tools.TOOLS if not t.flow_only]
-        assert len(pages) == 5 and len(tools.TOOLS) - len(pages) == 2, [t.key for t in pages]
+        assert len(pages) == 7, "a tool lost its page: " + str([t.key for t in pages])
         for tool in pages:
             line = tool.command(runs="~/r", port=8123)
             assert tool.install in line or '"$HOME"' in line, line
             assert '"$HOME"/r' in line, (tool.key, line)
+        for key in ("rfdiffusion", "boltzgen"):
+            line = tools.BY_KEY[key].command(runs="", port=8123)
+            assert tools.LABS_INSTALL in line and "hope_labs.pages.serve %s" % key in line, line
+            assert "NO-LABS" in line, "a missing HOPE Labs checkout is not named: " + line
         # the three handshakes, each read off what its tool actually prints
         assert tools.BY_KEY["hopemd"].ready("open  http://127.0.0.1:8098/?t=abcDEF_-", 0) == (8098, "abcDEF_-")
+        assert tools.BY_KEY["rfdiffusion"].ready("open  http://127.0.0.1:8131/?t=Qx_7-y", 0) == (8131, "Qx_7-y")
         assert tools.BY_KEY["aptamer"].ready("HOPE-APTAMER-LAUNCHER port=8123 node=login2\n"
                                              "HOPE-APTAMER-TOKEN abcdefghijklmnop12", 0) == (8123, "abcdefghijklmnop12")
         assert tools.BY_KEY["pipelines"].ready("something\nopen http://127.0.0.1:8900/?t=tok12345\n"
