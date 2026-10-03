@@ -331,25 +331,40 @@ def link_refused(from_card, from_port, to_card, to_port, settings=None):
         return "%s takes nothing called %s" % (b.name, to_port)
     kind = next((k for k in out.kinds if into.takes(k)), "")
     if not kind:
-        return ("%s carries %s; %s's %s takes %s"
-                % (out.label, " or ".join(KINDS[k] for k in out.kinds), b.name, into.label,
-                   " or ".join(KINDS[k] for k in into.kinds)))
-    # The one refusal that is about a number rather than a kind. A binder longer than the docking
-    # will take is not a link anybody can rescue later, so it is refused while it is being drawn.
-    # Only what the flow sized is measured: peptides from a pipeline are short whatever was asked
-    # of the design tools beside it, and docking them is the ordinary way round.
-    if kind == "sequences" and b.key == "adcp" and out.sized:
-        longest = (settings or {}).get("binder_max")
-        try:
-            longest = int(longest)
-        except (TypeError, ValueError):
-            # No length asked for yet. The whole flow is refused for that separately, but this is
-            # also asked on its own, by the runner, where letting it pass would dock a binder far
-            # too long for the docking to take.
-            return ("this link needs the binder length the flow asks for, and the target does "
-                    "not give one")
-        if longest > DOCKABLE_MAX_LENGTH:
-            return ("the docking takes peptides of %d residues or fewer, and this flow asks for "
-                    "binders of up to %d. Simulate these designs directly, or ask for shorter ones."
-                    % (DOCKABLE_MAX_LENGTH, longest))
+        # Where the same card has another socket that would fit, say which. Two sockets a few
+        # pixels apart, one of which is the one wanted, is the likeliest reason anybody is
+        # reading this at all.
+        instead = next((p.label for p in a.outputs
+                        if p.key != from_port and any(into.takes(k) for k in p.kinds)), "")
+        return ("%s carries %s, and %s takes %s.%s"
+                % (out.label, " or ".join(KINDS[k] for k in out.kinds), into.label,
+                   " or ".join(KINDS[k] for k in into.kinds),
+                   (" Try %s instead." % instead) if instead else ""))
+    return ""
+
+
+def link_warning(from_card, from_port, to_card, to_port, settings=None):
+    """What is worth saying about a link that is allowed anyway, or "" when there is nothing.
+
+    Length is a caution rather than a refusal. What the target card asks for is what the design
+    tool will aim at, not what it will produce, and a person who shortens the binder afterwards
+    should not have to draw the link again to be let through. The run decides: designs that are
+    short enough are docked and the rest are left behind by name, which is what the record shows.
+    """
+    a, b = BY_KEY.get(from_card), BY_KEY.get(to_card)
+    if a is None or b is None:
+        return ""
+    out = a.port_out(from_port)
+    if out is None or not out.sized or b.key != "adcp":
+        return ""
+    longest = (settings or {}).get("binder_max")
+    try:
+        longest = int(longest)
+    except (TypeError, ValueError):
+        return ""
+    if longest > DOCKABLE_MAX_LENGTH:
+        return ("the docking takes peptides of %d residues or fewer, and this flow asks for "
+                "binders of up to %d. Designs longer than %d will be left behind rather than "
+                "docked; shorten the binder, or simulate them directly instead."
+                % (DOCKABLE_MAX_LENGTH, longest, DOCKABLE_MAX_LENGTH))
     return ""

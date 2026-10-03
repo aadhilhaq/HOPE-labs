@@ -78,8 +78,11 @@ check(all(len(n.get("at", [])) == 2 for n in example["nodes"]),
 # --- the length refusal, which is the one about a number --------------------
 long_binder = flow_with(100, ("t>p", "t>b", "t>a", "b>a", "b>m", "a>m"))
 said = flow.Flow.from_json(long_binder).check()
-check(any("30 residues or fewer" in s and "up to 100" in s for s in said),
-      "a 100-residue design linked to the docking is not refused for its length: %s" % said)
+check(said == [],
+      "a 100-residue design linked to the docking is refused rather than cautioned: %s" % said)
+warned = flow.Flow.from_json(long_binder).warnings()
+check(any("30 residues or fewer" in w and "up to 100" in w for w in warned),
+      "and no warning says what will happen to it: %s" % warned)
 check(flow.Flow.from_json(flow_with(24, ("t>p", "t>b", "t>a", "b>a", "b>m", "a>m"))).check() == [],
       "the same flow with short binders should be sound")
 # and the table the canvas colours its sockets from says it in the same words
@@ -151,8 +154,10 @@ try:
               "/api/flow/check disagrees with Flow.check() about %s: %s against %s"
               % (name, body.get("problems"), flow.Flow.from_json(doc).check()))
     code, body = ask("/api/flow/check" + tok, {"flow": long_binder})
-    check(any("30 residues or fewer" in s for s in body.get("problems", [])),
-          "the check route does not say why a long binder cannot be docked: %s" % body)
+    check(body.get("problems") == [],
+          "a long binder linked to the docking shuts Launch: %s" % body.get("problems"))
+    check(any("30 residues or fewer" in w for w in body.get("warnings", [])),
+          "the check route does not caution about a long binder: %s" % body.get("warnings"))
     check(body.get("refusals", {}).get("bindcraft:sequences>adcp:sequences", "")
           == cards.link_refused("bindcraft", "sequences", "adcp", "sequences",
                                 {"binder_max": 100}),

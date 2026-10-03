@@ -56,10 +56,15 @@ ok(cards.link_refused("bindcraft", "complexes", "adcp", "sequences") != "",
 short, long_ = {"binder_max": 24}, {"binder_max": 100}
 ok(cards.link_refused("bindcraft", "sequences", "adcp", "sequences", short) == "",
    "a short design may be docked")
-why = cards.link_refused("bindcraft", "sequences", "adcp", "sequences", long_)
-ok(why != "" and "30" in why, "a 100-residue design may not be docked: %s" % why[:70])
-ok(flow.Flow.from_json(built(binder=(70, 100), links=("t>p", "t>b", "t>a", "b>a", "b>m", "a>m")
-                             ).dumps()).check() != [], "and the whole flow is refused for it")
+ok(cards.link_refused("bindcraft", "sequences", "adcp", "sequences", long_) == "",
+   "a long design may still be linked to the docking: the length is theirs to change")
+why = cards.link_warning("bindcraft", "sequences", "adcp", "sequences", long_)
+ok(why != "" and "30" in why, "and is cautioned rather than refused: %s" % why[:70])
+long_flow = flow.Flow.from_json(built(binder=(70, 100),
+                                      links=("t>p", "t>b", "t>a", "b>a", "b>m", "a>m")).dumps())
+ok(long_flow.check() == [], "but the whole flow is not refused for it: the length is a caution")
+ok(any("left behind" in w for w in long_flow.warnings()),
+   "it is said as a warning instead: %s" % (long_flow.warnings() or "nothing"))
 ok(built(binder=(18, 24), links=("t>p", "t>b", "t>a", "b>a", "b>m", "a>m")).check() == [],
    "while the same flow with short binders is sound")
 
@@ -93,8 +98,8 @@ twice.edges.append(flow.Edge("t2", "target", "a", "target"))
 bad2 = twice.check()
 ok(any("takes one thing at" in b for b in bad2) or any("more than one target" in b for b in bad2),
    "two things arriving where one is taken is refused: %s" % bad2[:1])
-ok(cards.link_refused("bindcraft", "sequences", "adcp", "sequences", {}) != "",
-   "a link that needs the binder length is refused when the flow gives none")
+ok(cards.link_refused("bindcraft", "sequences", "adcp", "sequences", {}) == "",
+   "a link is not refused for a binder length the flow has not been given yet")
 
 # it survives the round trip
 again = flow.Flow.from_json(built().dumps())

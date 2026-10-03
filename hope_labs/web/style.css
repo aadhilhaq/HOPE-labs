@@ -322,3 +322,7 @@ table.runs tr:hover td{background:var(--wait)}
 /* the fold in a card's settings: a quiet line rather than a button that competes with Launch */
 .panel .btn.more{width:100%;margin:10px 0 2px;border-style:dashed;color:var(--dim)}
 .panel .btn.more:hover{color:var(--teal);border-color:var(--teal)}
+
+/* a caution, which the flow can be queued with: amber rather than the rust a refusal uses */
+.problist.warn li{color:var(--rust)}
+.problist.warn li::marker{color:var(--rust)}

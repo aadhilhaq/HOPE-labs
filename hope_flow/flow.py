@@ -132,6 +132,25 @@ class Flow:
             edge.extend(self.upstream(nid2))
         return None
 
+    def warnings(self):
+        """What is worth saying about this flow, that does not stop it running.
+
+        Kept apart from check() on purpose. A problem is a flow that cannot run; a warning is one
+        that can, and that somebody should look at first. Mixing the two means either that Launch
+        is shut for something survivable, or that a real refusal is read as advice.
+        """
+        target = next((n for n in self.nodes if n.card == "target"), None)
+        settings = target.settings if target else {}
+        out = []
+        for e in self.edges:
+            src, dst = self.node(e.src), self.node(e.dst)
+            if src is None or dst is None or src.kind is None or dst.kind is None:
+                continue
+            said = cards.link_warning(src.card, e.src_port, dst.card, e.dst_port, settings)
+            if said:
+                out.append("%s to %s: %s" % (src.kind.name, dst.kind.name, said))
+        return out
+
     # ---- what is wrong with it -------------------------------------------
     def check(self):
         """Everything wrong with this flow, as sentences. Empty means it can be queued."""

@@ -81,14 +81,23 @@ def main(argv=None):
             path = os.path.join(hub.WEB, name)
             assert os.path.isfile(path), "the page is missing from the bundle: " + name
         notes.append("page ok")
-        # The canvas: the card catalogue the runner reads, the example it starts from, and the one
-        # refusal that is about a number rather than a kind.
+        # The canvas: the card catalogue the runner reads, the example it starts from, and that a
+        # binder too long to dock is cautioned rather than refused.
         from . import canvas
+        from hope_flow.flow import Flow
         assert len(canvas.catalogue()["cards"]) == 6, "a card went missing from the catalogue"
         assert canvas.check(canvas.example())["problems"] == [], canvas.check(canvas.example())
-        long_binder = canvas.refusals({"binder_max": 100})["bindcraft:sequences>adcp:sequences"]
-        assert "30 residues or fewer" in long_binder, long_binder
-        assert canvas.refusals({"binder_max": 24})["bindcraft:sequences>adcp:sequences"] == ""
+        assert canvas.refusals({"binder_max": 100})["bindcraft:sequences>adcp:sequences"] == "", \
+            "a long binder is refused rather than cautioned"
+        long_doc = canvas.example()
+        for node in long_doc["nodes"]:
+            if node["card"] == "target":
+                node["settings"]["binder_max"] = 100
+            if node["card"] == "bindcraft":
+                long_doc["edges"].append({"from": node["id"], "fromPort": "sequences",
+                                          "to": "adcp", "toPort": "sequences"})
+        said = Flow.from_json(long_doc).warnings()
+        assert any("30 residues or fewer" in w for w in said), said
         notes.append("canvas ok, %d cards" % len(canvas.catalogue()["cards"]))
         # the docs ride along in web/, so a build that left them behind is caught here too
         from . import docs

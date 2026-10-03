@@ -195,11 +195,16 @@ def _bindcraft_to_adcp(flow, record, edge, flow_dir):
     the cluster as a file.
     """
     where = _rundir(record, edge.src)
+    # What the campaign was asked for is a prediction; what it designed is a fact, and the fact is
+    # on disk by the time this runs. So the lengths are read from the designs rather than from the
+    # request: a campaign asked for long binders that happened to pass a short one is not turned
+    # away, and one asked for short binders that drifted long is not waved through.
     asked = _asked_lengths(where)
     if asked and asked[1] > DOCKABLE_MAX_LENGTH:
-        raise NotWired("this campaign asks for binders of up to %d residues, and the docking "
-                       "takes %d: nothing it designs could be docked"
-                       % (asked[1], DOCKABLE_MAX_LENGTH))
+        say = "this campaign asked for binders of up to %d residues and the docking takes %d" \
+              % (asked[1], DOCKABLE_MAX_LENGTH)
+    else:
+        say = ""
     rows, read = _bindcraft_designs(where)
     pairs, dropped = [], []
     for row in rows:
@@ -213,7 +218,8 @@ def _bindcraft_to_adcp(flow, record, edge, flow_dir):
     path, kept, same = _peptides_file(flow_dir, edge.dst, pairs)
     dropped.extend(same)
     return {"kind": "sequences", "count": len(kept), "path": path, "dropped": dropped,
-            "what": "%d design(s) from %s%s" % (len(kept), read, _said(dropped))}
+            "what": "%d design(s) from %s%s%s"
+                    % (len(kept), read, _said(dropped), ("; " + say) if say and not kept else "")}
 
 
 def _said(dropped):

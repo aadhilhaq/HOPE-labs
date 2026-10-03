@@ -125,12 +125,16 @@ else:
     flow = a_flow(([{"id": "b", "card": "bindcraft", "settings": {"designs": 10}}, {"id": "a", "card": "adcp"}],
                    [("t", "target", "b", "target"), ("t", "target", "a", "target"),
                     ("b", "sequences", "a", "sequences")]), binder=(70, 100))
+    # Judged on the designs, not on what was asked for: too long and none are carried, with the
+    # reason, rather than the junction refusing the campaign before it has looked at anything.
     try:
-        carried(flow, {"b": BINDCRAFT_RUN}, 2)
-        ok(False, "a campaign of 70-100mers should not reach the docking")
+        got = carried(flow, {"b": BINDCRAFT_RUN}, 2)
+        ok(got["count"] == 0, "nothing too long to dock is carried: %d" % got["count"])
+        ok("30" in got["what"] or got["dropped"],
+           "and it says why: %s" % got["what"][:110])
     except adapters.NotWired as why:
-        ok("could be docked" in str(why) or "takes" in str(why),
-           "a campaign too long to dock is refused, with the numbers: %s" % str(why)[:90])
+        ok("no table of designs" in str(why),
+           "the campaign could not be read at all: %s" % str(why)[:90])
 
 shutil.rmtree(WORK, ignore_errors=True)
 print("\n%d skipped" % len(skipped) if skipped else "")

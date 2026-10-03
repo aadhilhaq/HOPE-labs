@@ -54,9 +54,17 @@ def refusals(settings=None):
 
 
 def check(doc):
-    """What is wrong with this flow, and what may be linked to what as it now stands."""
-    problems = flow.Flow.from_json(doc or {}).check()
-    return {"problems": problems, "refusals": refusals(target_settings(doc))}
+    """What is wrong with this flow, what is worth saying about it, and what may be linked to what.
+
+    Problems and warnings are kept apart, and so is what the page does with them: a problem shuts
+    Launch, a warning does not. The length of a binder is the warning that matters - a design too
+    long to dock is left behind rather than docked, which is a thing to know before starting and
+    not a reason to refuse the drawing.
+    """
+    doc = doc or {}
+    made = flow.Flow.from_json(doc)
+    return {"problems": made.check(), "warnings": made.warnings(),
+            "refusals": refusals(target_settings(doc))}
 
 
 def example():

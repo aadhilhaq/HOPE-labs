@@ -34,6 +34,7 @@ let CAT = null;                     // the catalogue, read once
 let FLOW = blankFlow();             // exactly the document flow.py reads and writes
 let REFUSALS = {};                  // "card:port>card:port" -> why not, or ""
 let PROBLEMS = [];                  // check()'s sentences, as they came
+let WARNINGS = [];                  // things worth knowing that do not stop the flow running
 let CHECKED = false;                // whether the launcher has answered about this flow yet
 let PICKED = "";                    // the node whose settings the panel shows
 let WIRE = null;                    // the link being drawn, while one is
@@ -538,6 +539,14 @@ function field(node, setting) {
   return wrap;
 }
 
+function fillDefaults(node, card) {
+  (card && card.settings ? card.settings : []).forEach((s) => {
+    if (node.settings[s.key] === undefined) {
+      node.settings[s.key] = s.default === null ? "" : s.default;
+    }
+  });
+}
+
 /* The cards whose further settings are open. Per card, not one switch for all of them: a person
    deep in the simulation's settings is not asking to see the docking's as well. */
 const MORE = new Set();
@@ -567,6 +576,12 @@ function paintPanel() {
     box.appendChild(el("p", "phint", card.name + " has nothing to fill in here: it works from the "
       + "target and from whatever arrives at its sockets."));
   }
+  /* Anything the drawing does not say is filled in from the catalogue before the fields are
+     drawn, so a box never shows one thing while the run does another. A tick box was the way this
+     showed: a setting the drawing had no value for was drawn unticked, while the tool it goes to
+     treats absent as yes - so MM-GBSA read as off on a run that would compute it. */
+  fillDefaults(node, card);
+
   /* The few that change what a run is, then the rest behind a fold. A tool's own defaults are
      the lab's considered answer to most of these, and making somebody scroll past twenty of them
      to reach the one they came for is how a panel stops being read at all. The fold stays open
@@ -597,11 +612,20 @@ function paintProblems() {
   box.innerHTML = "";
   if (!CHECKED) {
     box.appendChild(el("p", "pgood", "Checking…"));
-  } else if (!PROBLEMS.length) {
+  } else if (!PROBLEMS.length && !WARNINGS.length) {
     box.appendChild(el("p", "pgood", "Nothing wrong with this flow."));
-  } else {
+  }
+  if (CHECKED && PROBLEMS.length) {
     const list = el("ul", "problist");
     PROBLEMS.forEach((why) => list.appendChild(el("li", null, why)));
+    box.appendChild(list);
+  }
+  /* A warning is not a refusal, and must not read as one. The flow can be queued with these
+     standing; what they say is what will happen to it, which somebody should know before
+     pressing Launch rather than find out from the record afterwards. */
+  if (CHECKED && WARNINGS.length) {
+    const list = el("ul", "problist warn");
+    WARNINGS.forEach((why) => list.appendChild(el("li", null, why)));
     box.appendChild(list);
   }
   $("flowlaunch").disabled = !CHECKED || PROBLEMS.length > 0;
@@ -627,12 +651,14 @@ async function check() {
     if (mine !== checkSeq) return;
     CHECKED = true;
     PROBLEMS = [failure.message];
+    WARNINGS = [];
     paintProblems();
     return;
   }
   if (mine !== checkSeq) return;                // a later check has already answered
   REFUSALS = got.refusals || {};
   PROBLEMS = got.problems || [];
+  WARNINGS = got.warnings || [];
   CHECKED = true;
   paintProblems();
   paintWires();
