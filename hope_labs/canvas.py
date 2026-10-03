@@ -1,10 +1,9 @@
 """What the canvas asks the launcher for: the cards, the checking, and the flow to start from.
 
 The canvas draws; it decides nothing. Which links are legal and what is wrong with a flow are
-answered here, out of cards.py and flow.py, which are the same two files the runner reads on the
-cluster (hope_labs/cards.py and hope_labs/flow.py are kept byte identical to HOPE-flow's). So a
-flow that draws clean on the laptop is a flow the cluster agrees with, and a refusal reads the
-same in both places because there is only one wording of it.
+answered here, out of hope_flow's cards.py and flow.py - the very files the runner reads on the
+cluster, not copies of them. So a flow that draws clean on the laptop is a flow the cluster agrees
+with, and a refusal reads the same in both places because there is only one wording of it.
 
 The refusal table is the part worth explaining. A link is refused while it is being dragged, and
 one round trip per candidate socket would make the drag crawl, so the whole table of what may
