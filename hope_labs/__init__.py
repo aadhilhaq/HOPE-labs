@@ -6,7 +6,7 @@ The tools are untouched: each is the page it always was, reached through the sam
 a person approves Duo once instead of five times.
 """
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 APP = "HOPE Labs"
 TAGLINE = "the lab's tools, in one place"
 BLURB = "Docking, design and simulation on Grace, from one sign-in."
