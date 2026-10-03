@@ -108,6 +108,40 @@ def _queue_step(where, node_id, record, dependency=""):
     return jid
 
 
+def _queue_seal(where, node_id, record, after, say=print):
+    """A job that reads the flow's own state once the last card's work has ended, and writes it.
+
+    It runs `status`, which is the one thing that brings a record up to date from the queue. Not
+    worth failing the card for if it cannot be queued: the record is then as it always was, true
+    the moment anybody asks.
+    """
+    script = os.path.join(where, "logs", "seal-%s.sbatch" % node_id)
+    with open(script, "w", encoding="utf-8") as fh:
+        fh.write(queue.step_script(where, node_id,
+                                   record.data.get("python") or "python3",
+                                   record.data.get("package_root") or "",
+                                   record.data.get("account") or "",
+                                   record.data.get("partition") or "")
+                 .replace("hope_flow.cli step", "hope_flow.cli status")
+                 .replace(" %s\n" % _q(node_id), "\n")
+                 .replace("--job-name=flow-%s" % node_id, "--job-name=flow-%s-seal" % node_id))
+    os.chmod(script, 0o755)
+    try:
+        jid = queue.submit(script, where, dependency=after, name="flow-%s-seal" % node_id)
+        # Written down so that anything waiting for the flow to be finished with can see it. A job
+        # nobody records is a job nobody can wait for.
+        record.set(node_id, seal=jid)
+        record.write()
+        say("%s will write down how it ended" % jid)
+    except RuntimeError as why:
+        say("the sealing job was refused (%s); the record is true whenever it is next read" % why)
+
+
+def _q(text):
+    import shlex
+    return shlex.quote(str(text))
+
+
 def refresh(flow, record):
     """Bring every card's state up to date from Slurm. The only thing that reads the queue."""
     changed = False
@@ -206,6 +240,13 @@ def step(where, node_id, say=print):
         raise
 
     after = "afterok:" + ":".join(jobs) if jobs else ""
+    # Nothing comes after this card, so nothing will ever look at it again and mark it finished:
+    # a card's state is brought up to date by the card after it. Left alone, a flow that ended
+    # while nobody was watching reads as still queued for ever. One small job behind its tool
+    # settles it, which is what somebody opening the launcher a week later will read.
+    if jobs and not flow.out_of(node_id):
+        _queue_seal(where, node_id, record, after, say)
+
     for edge in flow.out_of(node_id):
         if record.state_of(edge.dst) in (st.QUEUED, st.RUNNING, st.DONE):
             continue
