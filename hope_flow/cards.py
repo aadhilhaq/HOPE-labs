@@ -102,7 +102,7 @@ class Setting:
     """A field on a card. `kind` is how the canvas draws it, not how it is stored."""
 
     def __init__(self, key, label, kind, default=None, choices=(), why="", optional=False,
-                 needed=False):
+                 needed=False, advanced=False):
         self.key = key
         self.label = label
         self.kind = kind                # text | number | choice | residues | yesno | path
@@ -115,11 +115,16 @@ class Setting:
         #: person says what they mean before anything is queued rather than finding out from a
         #: run that did the wrong thing for a day.
         self.needed = needed
+        #: Shown only when a person asks for more. The few settings above the fold are the ones
+        #: that change what a run is; these change how it is done, and a tool's own defaults are
+        #: the lab's considered answer to most of them. Hiding them is not hiding the choice -
+        #: it is not making somebody refuse twenty of them to get to the one they came for.
+        self.advanced = advanced
 
     def as_json(self):
         return {"key": self.key, "label": self.label, "kind": self.kind, "default": self.default,
                 "choices": list(self.choices), "why": self.why, "optional": self.optional,
-                "needed": self.needed}
+                "needed": self.needed, "advanced": self.advanced}
 
 
 # --- the cards -------------------------------------------------------------------------------
@@ -161,6 +166,35 @@ PIPELINES = Card(
         Setting("n_constructs", "Constructs to carry forward", "number", 25, optional=True),
         Setting("n_mmgbsa", "Of those, how many to score with MM-GBSA", "number", 10, optional=True,
                 why="the slow step: each one is minutes on a large receptor"),
+        # The docking downstream takes nothing over thirty residues, and the pipelines' own
+        # default is no maximum at all, so a run can spend a day designing constructs the next
+        # card will drop. Reachable here for that reason.
+        Setting("max_construct_length", "Longest construct, residues", "number", 0, optional=True,
+                advanced=True, why="0 is no maximum. The docking takes 30"),
+        Setting("min_construct_length", "Shortest construct, residues", "number", 10,
+                optional=True, advanced=True),
+        Setting("library_size", "Library size", "number", 0, optional=True, advanced=True,
+                why="0 keeps the pipeline's own"),
+        Setting("exhaustiveness", "Docking exhaustiveness", "number", 8, optional=True,
+                advanced=True),
+        Setting("adcp_replicas", "ADCP replicas, when it reranks", "number", 100, optional=True,
+                advanced=True),
+        Setting("adcp_steps", "ADCP steps", "number", 0, optional=True, advanced=True,
+                why="0 is a million per residue, which is the guideline"),
+        Setting("ph", "pH", "number", 7.4, optional=True, advanced=True),
+        Setting("protein_prep", "Prepare the receptor", "yesno", True, optional=True,
+                advanced=True),
+        Setting("colabfold", "Co-fold the designs to check the site", "yesno", True,
+                optional=True, advanced=True, why="a GPU job after the design job"),
+        Setting("mmgbsa", "Rescore with MM-GBSA", "yesno", True, optional=True, advanced=True),
+        Setting("scout", "Scout single residues for the gaps", "yesno", False, optional=True,
+                advanced=True, why="changes which peptides are designed"),
+        Setting("hopepe", "Judge practicality as well as binding", "yesno", True, optional=True,
+                advanced=True),
+        Setting("cpus", "Cores", "number", 0, optional=True, advanced=True,
+                why="0 keeps the pipeline's own"),
+        Setting("partition", "Partition", "text", "", optional=True, advanced=True),
+        Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ],
     note="Peptides, short enough to dock.")
 
@@ -180,6 +214,12 @@ BINDCRAFT = Card(
                 choices=["auto", "a100", "a40", "rtx"], optional=True),
         Setting("walltime", "Walltime", "text", "24:00:00", optional=True,
                 why="a campaign that runs out carries on when it is queued again"),
+        Setting("coldspots", "Coldspots", "residues", "", optional=True, advanced=True,
+                why="residues to keep clear of"),
+        Setting("forced", "Focus on the hotspots", "yesno", False, optional=True, advanced=True,
+                why="the surface outside them is rebuilt so a binder cannot settle elsewhere"),
+        Setting("gpus", "Cards", "number", 1, optional=True, advanced=True),
+        Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ],
     note="Designs come out already placed on the target, so docking them again is optional.")
 
@@ -206,6 +246,12 @@ ADCP = Card(
                 why="how many independent searches per peptide"),
         Setting("mmgbsa", "Score the best poses with MM-GBSA", "yesno", True, optional=True,
                 why="slower, and the more considered estimate of binding"),
+        Setting("steps", "Steps per replica", "number", 0, optional=True, advanced=True,
+                why="0 is the docking's own"),
+        Setting("cpus", "Cores", "number", 48, optional=True, advanced=True),
+        Setting("walltime", "Walltime", "text", "08:00:00", optional=True, advanced=True),
+        Setting("partition", "Partition", "text", "", optional=True, advanced=True),
+        Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ],
     note="Takes peptides of %d residues or fewer." % DOCKABLE_MAX_LENGTH)
 
@@ -231,6 +277,32 @@ HOPEMD = Card(
         Setting("replicates", "Replicates", "number", 3, optional=True,
                 why="independent repeats, each with its own seed"),
         Setting("mmgbsa", "Binding energy by MM-GBSA", "yesno", True, optional=True),
+        # A flow that runs overnight should leave something to read in the morning. Neither of
+        # these is made by a run on its own: they are asked for afterwards, from the Runs screen,
+        # which is a person pressing buttons on twenty runs. Asked for here, the flow does it.
+        Setting("report", "Write each run's report when it finishes", "yesno", True,
+                optional=True, advanced=True),
+        Setting("videos", "Make each run's videos when it finishes", "yesno", False,
+                optional=True, advanced=True, why="a job of its own per run, cut from the trajectory"),
+        Setting("temperature_K", "Temperature, K", "number", 300, optional=True, advanced=True),
+        Setting("pressure_bar", "Pressure, bar", "number", 1.0, optional=True, advanced=True),
+        Setting("timestep_fs", "Timestep, fs", "number", 4.0, optional=True, advanced=True,
+                why="4 fs means hydrogen mass repartitioning"),
+        Setting("equil_ps", "Equilibration, ps", "number", 1000, optional=True, advanced=True,
+                why="over the restraint ladder"),
+        Setting("heat_ps", "Heating, ps", "number", 200, optional=True, advanced=True),
+        Setting("minimise_steps", "Minimisation steps", "number", 5000, optional=True,
+                advanced=True),
+        Setting("seed", "Random seed", "number", -1, optional=True, advanced=True,
+                why="-1 lets each replicate pick its own"),
+        Setting("water", "Water", "choice", "", choices=["", "OPC", "TIP3P", "TIP4P-Ew", "SPC"],
+                optional=True, advanced=True, why="empty takes the engine's usual"),
+        Setting("protein", "Protein force field", "choice", "",
+                choices=["", "ff19SB", "ff14SB"], optional=True, advanced=True),
+        Setting("walltime", "Walltime", "text", "", optional=True, advanced=True,
+                why="empty takes the estimate's"),
+        Setting("partition", "Partition", "text", "", optional=True, advanced=True),
+        Setting("account", "Account to charge", "text", "", optional=True, advanced=True),
     ])
 
 CARDS = (TARGET, PIPELINES, BINDCRAFT, APTAMER, ADCP, HOPEMD)

@@ -538,6 +538,10 @@ function field(node, setting) {
   return wrap;
 }
 
+/* The cards whose further settings are open. Per card, not one switch for all of them: a person
+   deep in the simulation's settings is not asking to see the docking's as well. */
+const MORE = new Set();
+
 function paintPanel() {
   const box = $("panel");
   box.innerHTML = "";
@@ -563,7 +567,25 @@ function paintPanel() {
     box.appendChild(el("p", "phint", card.name + " has nothing to fill in here: it works from the "
       + "target and from whatever arrives at its sockets."));
   }
-  settings.forEach((s) => box.appendChild(field(node, s)));
+  /* The few that change what a run is, then the rest behind a fold. A tool's own defaults are
+     the lab's considered answer to most of these, and making somebody scroll past twenty of them
+     to reach the one they came for is how a panel stops being read at all. The fold stays open
+     per card once it has been opened, so comparing two cards' settings does not mean opening it
+     again each time. */
+  settings.filter((s) => !s.advanced).forEach((s) => box.appendChild(field(node, s)));
+  const deeper = settings.filter((s) => s.advanced);
+  if (deeper.length) {
+    const open = MORE.has(node.id);
+    const toggle = el("button", "btn sm more",
+                      (open ? "Fewer settings" : "More settings") + " · " + deeper.length);
+    toggle.onclick = () => { if (open) MORE.delete(node.id); else MORE.add(node.id); paintPanel(); };
+    box.appendChild(toggle);
+    if (open) {
+      box.appendChild(el("p", "phint", "Left alone, each of these takes "
+        + (card ? card.name : "the tool") + "'s own default, which is what its page would use."));
+      deeper.forEach((s) => box.appendChild(field(node, s)));
+    }
+  }
   const off = el("button", "btn sm", "Take this card off");
   off.onclick = () => dropCard(node.id);
   box.appendChild(off);

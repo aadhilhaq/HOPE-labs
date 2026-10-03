@@ -217,3 +217,27 @@ if fails:
         print("  - " + why)
     sys.exit(1)
 print("ok  %d checks: the cards, the canvas's routes and the flows it keeps" % ran)
+
+# --- the settings a card offers, and the fold they sit behind ----------------
+# The page shows the few that change what a run is and hides the rest; what matters here is that
+# the hidden ones are real settings the tools take, and that nothing a flow refuses to start
+# without is hidden where nobody would look for it.
+for _card in cards.CARDS:
+    _hidden_but_needed = [s.key for s in _card.settings if s.advanced and s.needed]
+    check(not _hidden_but_needed,
+          "%s hides a setting it will not start without: %s" % (_card.name, _hidden_but_needed))
+    for _s in _card.settings:
+        check(_s.kind in ("text", "number", "choice", "residues", "yesno", "path"),
+              "%s's %s is drawn as %r, which the panel has no field for"
+              % (_card.name, _s.key, _s.kind))
+        if _s.choices:
+            check(_s.default in _s.choices or _s.default in ("", None),
+                  "%s's %s defaults to %r, which is not one of its choices"
+                  % (_card.name, _s.key, _s.default))
+
+_md = cards.BY_KEY["hopemd"]
+check(any(s.key == "report" for s in _md.settings),
+      "a flow cannot be asked to write its runs' reports")
+check(len([s for s in _md.settings if s.advanced]) >= 10,
+      "the simulation offers too little behind the fold: %d"
+      % len([s for s in _md.settings if s.advanced]))

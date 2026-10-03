@@ -166,11 +166,20 @@ def _pipelines(node, flow, carried, flow_dir, record, say=print):
              "receptor": target["path"],
              "chain": target.get("chains") or "A",
              "hotspots": target.get("hotspots") or ""}
+    # Only what the card was given: a key left out falls through to the pipeline's own config
+    # template, which is where the lab's considered defaults live and where they should stay.
+    # A zero is "keep yours" for the sizes, so it is not passed either.
+    keep_own = ("library_size", "cpus", "exhaustiveness", "adcp_steps", "max_construct_length")
     for key in ("rounds", "cpus", "mem", "nodes", "partition", "account", "library_size",
                 "n_constructs", "min_construct_length", "max_construct_length", "adcp",
-                "mmgbsa", "colabfold", "scout", "hopepe", "pose_viewer", "ph"):
-        if s.get(key) not in (None, ""):
-            asked[key] = s[key]
+                "mmgbsa", "colabfold", "scout", "hopepe", "pose_viewer", "ph", "protein_prep",
+                "exhaustiveness", "n_mmgbsa", "adcp_replicas", "adcp_steps", "rerank_engine"):
+        value = s.get(key)
+        if value in (None, ""):
+            continue
+        if key in keep_own and str(value) in ("0", "0.0"):
+            continue
+        asked[key] = value
 
     helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers", "pipelines.py")
     line = ('if [ -f %(env)s ]; then . %(env)s; fi; '
@@ -214,6 +223,10 @@ def _bindcraft(node, flow, carried, flow_dir, record, say=print):
             "--designs", str(int(s.get("designs") or 10))]
     if target.get("hotspots"):
         args += ["--hotspots", target["hotspots"]]
+    if s.get("coldspots"):
+        args += ["--coldspots", str(s["coldspots"])]
+    if s.get("forced"):
+        args.append("--forced")
     for flag, key in (("--gpu", "gpu"), ("--gpus", "gpus"), ("--walltime", "walltime"),
                       ("--account", "account")):
         if s.get(key) not in (None, ""):
@@ -255,8 +268,10 @@ def _adcp(node, flow, carried, flow_dir, record, say=print):
     for flag, key in (("--poses", "poses"), ("--replicas", "replicas"), ("--steps", "steps"),
                       ("--partition", "partition"), ("--account", "account"),
                       ("--cpus", "cpus"), ("--time", "walltime")):
-        if s.get(key) not in (None, ""):
-            args += [flag, str(s[key])]
+        value = s.get(key)
+        if value in (None, "") or (key == "steps" and str(value) in ("0", "0.0")):
+            continue
+        args += [flag, str(value)]
     if s.get("mmgbsa", True):
         args.append("--mmgbsa")
 
@@ -362,7 +377,71 @@ def _hopemd(node, flow, carried, flow_dir, record, say=print):
             jobs.extend(ids)
     if not jobs:
         raise NotWired("the simulation queued nothing")
+    # Neither the report nor the videos are made by a run on its own: they are asked for
+    # afterwards, from the Runs screen, which for twenty runs is twenty rounds of pressing
+    # buttons. A flow that ran overnight should leave something to read in the morning, so it
+    # queues one small job per run to do it, behind the run it belongs to.
+    if s.get("report", True) or s.get("videos"):
+        jobs.extend(_finish_runs(rundirs, jobs, s, flow_dir, node.id, say))
     return (rundirs[0] if len(rundirs) == 1 else root), jobs
+
+
+def _finish_runs(rundirs, after, s, flow_dir, node_id, say=print):
+    """Queue one job per finished run to write its report, and its videos when asked for.
+
+    It waits on everything the simulation queued rather than on that run's own jobs: a flow has
+    no business picking apart another tool's graph, and a few minutes of a short queue after the
+    last run is cheaper than being clever about it.
+    """
+    want_report = bool(s.get("report", True))
+    want_videos = bool(s.get("videos"))
+    reps = max(1, int(_number(s.get("replicates"), 3)))
+    where = os.path.join(flow_dir, "logs")
+    os.makedirs(where, exist_ok=True)
+    script = os.path.join(where, "finish-%s.sbatch" % node_id)
+    lines = ["#!/bin/bash",
+             "#SBATCH --job-name=flow-%s-finish" % node_id,
+             "#SBATCH --partition=%s" % (s.get("partition") or "short"),
+             "#SBATCH --time=01:00:00", "#SBATCH --ntasks=1", "#SBATCH --cpus-per-task=2",
+             "#SBATCH --mem=8G",
+             "#SBATCH --output=%s/%s-finish-%%j.out" % (where, node_id)]
+    if s.get("account"):
+        lines.append("#SBATCH --account=%s" % s["account"])
+    lines += ['export XDG_CACHE_HOME="${SCRATCH:-/tmp}/.cache/hopeflow"',
+              'export MPLCONFIGDIR="$XDG_CACHE_HOME/matplotlib"',
+              'mkdir -p "$XDG_CACHE_HOME"',
+              "cd %s || exit 1" % _q(INSTALLS["hopemd"]),
+              'if [ -f ./activate.sh ]; then . ./activate.sh; fi',
+              'PY="${HOPEMD_PYTHON:-python3}"',
+              "export PYTHONPATH=%s" % _q(INSTALLS["hopemd"]),
+              ""]
+    for rundir in rundirs:
+        if want_report:
+            # Each on its own line and never fatal: one run whose report will not write must not
+            # take the reports of the nineteen beside it with it.
+            lines.append('"$PY" -m hopemd.export.report %s || echo "no report for %s"'
+                         % (_q(rundir), os.path.basename(rundir)))
+        if want_videos:
+            for rep_n in range(1, reps + 1):
+                lines.append('"$PY" -m hopemd.export.video %s %d || echo "no video %d for %s"'
+                             % (_q(rundir), rep_n, rep_n, os.path.basename(rundir)))
+    with open(script, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    os.chmod(script, 0o755)
+    try:
+        from . import queue as q
+        jid = q.submit(script, flow_dir,
+                       dependency="afterok:" + ":".join(str(j) for j in after),
+                       name="flow-%s-finish" % node_id)
+    except RuntimeError as why:
+        # Not worth failing the simulation for: the runs are queued and the report can be asked
+        # for from the page as it always could.
+        say("the finishing job was refused (%s); the runs are queued regardless" % why)
+        return []
+    say("%s will write %s when the runs finish"
+        % (jid, " and ".join(x for x in (("reports" if want_report else ""),
+                                         ("videos" if want_videos else "")) if x)))
+    return [jid]
 
 
 def _top_n(s):
@@ -394,10 +473,23 @@ def _spec(s, source, receptor_chains=None, partner_chains=None):
         # frames. One is the other over the length of the run.
         protocol["save_ps"] = max(0.1, round(ns * 1000.0 / frames, 3))
 
-    spec = {"system": system,
-            "forcefield": {"engine": s.get("engine") or "amber"},
-            "protocol": protocol,
+    for key in ("temperature_K", "pressure_bar", "timestep_fs", "equil_ps", "heat_ps",
+                "minimise_steps", "seed"):
+        if s.get(key) not in (None, ""):
+            protocol[key] = _number(s[key], 0)
+    forcefield = {"engine": s.get("engine") or "amber"}
+    for key in ("water", "protein"):
+        if s.get(key):
+            forcefield[key] = s[key]
+    compute = {}
+    for key in ("walltime", "partition", "account"):
+        if s.get(key):
+            compute[key] = s[key]
+
+    spec = {"system": system, "forcefield": forcefield, "protocol": protocol,
             "analysis": {"mmgbsa": bool(s.get("mmgbsa", True))}}
+    if compute:
+        spec["compute"] = compute
     return spec
 
 
